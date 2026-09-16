@@ -33,14 +33,19 @@ def roll_equipment(bar_pool):
 # Main Game Engine
 class GameEngine:
     def __init__(self):
-        name = input("Enter your barmaid's name (leave blank for Bunhilda the Brawler): ").strip()
-        if not name:
-            name = "Bunhilda the Brawler"
+        print("\n--- CHOOSE YOUR BARMAID ---")
+        for i, cls in enumerate(Player.classes, start=1):
+            print(f"[{i}] {cls.name} - {cls.kit_description}")
 
-        self.player = Player()
-        self.player.barmaid_name = name
+        while True:
+            choice = input("Select your barmaid (1-3): ").strip()
+            if choice in ('1', '2', '3'):
+                break
+            print("Invalid choice.")
 
-        saved = database.get_player(name)
+        self.player = Player.classes[int(choice) - 1]()
+
+        saved = database.get_player(self.player.barmaid_name)
         if saved is None:
             database.create_player(self.player)
         else:
@@ -48,7 +53,7 @@ class GameEngine:
             self.player.barmaid_super_charge = saved["barmaid_super_charge"]
             self.player.current_zone_nbr = saved["current_zone_nbr"]
             self.player.pantry = saved["pantry"]
-            print(f"\nWelcome back, {name}! Loaded your saved tavern.")
+            print(f"\nWelcome back, {self.player.barmaid_name}! Loaded your saved tavern.")
 
     # Main game loop
     def run(self):
