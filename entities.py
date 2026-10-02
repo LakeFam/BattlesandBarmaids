@@ -37,8 +37,8 @@ class Player:
     kit_description = None
 
     def __init__(self):
-        self.gold = 10
-        self.pantry = {item: 6 for item in INGREDIENTS}
+        self.gold = database.STARTING_GOLD
+        self.pantry = {item: database.STARTING_PANTRY_QTY for item in INGREDIENTS}
         self.barmaid_name = self.name
         self.barmaid_super_charge = 0
         self.current_zone_nbr = 1

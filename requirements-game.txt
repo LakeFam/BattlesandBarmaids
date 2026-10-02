@@ -1,0 +1,4 @@
+# Terminal game: everything the API needs, plus audio and colored output
+-r requirements.txt
+pygame-ce
+rich

@@ -1,13 +1,12 @@
--- Run this first, against the "postgres" maintenance database:
-CREATE DATABASE python_fundamentals;
-
--- Then connect to python_fundamentals and run everything below.
+-- Run this against an empty battles_and_barmaids database. Under Docker
+-- Compose, Postgres creates that database (POSTGRES_DB) and runs this file
+-- automatically the first time the db volume is initialized.
 
 CREATE TABLE items (
     item_nbr SERIAL PRIMARY KEY,
     name TEXT NOT NULL UNIQUE,
     emoji TEXT NOT NULL,
-    cost INTEGER NOT NULL
+    cost INTEGER NOT NULL CHECK (cost >= 0)
 );
 
 -- Story chapters, per NARRATIVE.md section 5 (The Narrative Arc).
@@ -43,17 +42,17 @@ CREATE INDEX idx_quests_zone_nbr ON quests (zone_nbr);
 CREATE TABLE quest_drops (
     quest_nbr INTEGER NOT NULL REFERENCES quests(quest_nbr),
     item_nbr INTEGER NOT NULL REFERENCES items(item_nbr),
-    quantity INTEGER NOT NULL,
+    quantity INTEGER NOT NULL CHECK (quantity > 0),
     PRIMARY KEY (quest_nbr, item_nbr)
 );
 
 CREATE TABLE monsters (
     quest_nbr INTEGER NOT NULL REFERENCES quests(quest_nbr),
-    course INTEGER NOT NULL,
+    course INTEGER NOT NULL CHECK (course BETWEEN 1 AND 3),
     name TEXT NOT NULL,
-    hp INTEGER NOT NULL,
-    speed INTEGER NOT NULL,
-    attack INTEGER NOT NULL,
+    hp INTEGER NOT NULL CHECK (hp > 0),
+    speed INTEGER NOT NULL CHECK (speed > 0),
+    attack INTEGER NOT NULL CHECK (attack > 0),
     emoji TEXT NOT NULL,
     resistant_damage_type TEXT CHECK (resistant_damage_type IN ('fillet', 'skewer', 'tenderize', 'retro')),
     resistant_element TEXT CHECK (resistant_element IN ('spicy', 'frosty', 'tingly', 'umami')),
@@ -63,8 +62,9 @@ CREATE TABLE monsters (
 CREATE TABLE players (
     player_nbr SERIAL PRIMARY KEY,
     barmaid_name TEXT NOT NULL UNIQUE,
-    gold INTEGER NOT NULL,
-    barmaid_super_charge INTEGER NOT NULL,
+    barmaid_class TEXT NOT NULL CHECK (barmaid_class IN ('Marigold', 'Saffron', 'Bunhilda')),
+    gold INTEGER NOT NULL DEFAULT 10 CHECK (gold >= 0),
+    barmaid_super_charge INTEGER NOT NULL DEFAULT 0 CHECK (barmaid_super_charge BETWEEN 0 AND 100),
     current_zone_nbr INTEGER NOT NULL REFERENCES zones(zone_nbr) DEFAULT 1,
     updated_at TIMESTAMP NOT NULL DEFAULT now()
 );
@@ -72,7 +72,7 @@ CREATE TABLE players (
 CREATE TABLE player_inventory (
     player_nbr INTEGER NOT NULL REFERENCES players(player_nbr) ON DELETE CASCADE,
     item_nbr INTEGER NOT NULL REFERENCES items(item_nbr),
-    quantity INTEGER NOT NULL,
+    quantity INTEGER NOT NULL CHECK (quantity >= 0),
     PRIMARY KEY (player_nbr, item_nbr)
 );
 
@@ -87,8 +87,8 @@ CREATE TABLE equipment (
     rarity TEXT NOT NULL CHECK (rarity IN ('common', 'uncommon', 'rare', 'shiny')),
     damage_type TEXT CHECK (damage_type IN ('fillet', 'skewer', 'tenderize', 'retro')),
     element TEXT CHECK (element IN ('spicy', 'frosty', 'tingly', 'umami')),
-    power INTEGER NOT NULL,
-    cost INTEGER NOT NULL
+    power INTEGER NOT NULL CHECK (power >= 0),
+    cost INTEGER NOT NULL CHECK (cost >= 0)
 );
 
 -- Per-player progress for each of the 5 fixed adventurer classes (Paladin,
@@ -96,7 +96,7 @@ CREATE TABLE equipment (
 CREATE TABLE player_adventurers (
     player_nbr INTEGER NOT NULL REFERENCES players(player_nbr) ON DELETE CASCADE,
     adventurer_class TEXT NOT NULL CHECK (adventurer_class IN ('Paladin', 'Warrior', 'Ranger', 'Rogue', 'Mage')),
-    level INTEGER NOT NULL DEFAULT 1,
+    level INTEGER NOT NULL DEFAULT 1 CHECK (level >= 1),
     weapon_nbr INTEGER REFERENCES equipment(equipment_nbr),
     armor_nbr INTEGER REFERENCES equipment(equipment_nbr),
     PRIMARY KEY (player_nbr, adventurer_class)

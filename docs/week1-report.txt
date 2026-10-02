@@ -1,0 +1,176 @@
+Portfolio Project, Week 1 Report: Battles and Barmaids API
+
+PROJECT SUMMARY
+
+I'm building the back end for Battles and Barmaids: Enter the Taplands, a turn-based tavern RPG I wrote earlier in Python. The game already stores its data in Postgres through SQLAlchemy. Right now it only runs in a terminal. This project puts a Flask REST API in front of the game engine so the whole game can be played over HTTP, one request per turn. The app will run as two tiers under Docker Compose: a Flask web service and a Postgres database.
+
+The game in brief: you play a barmaid (Marigold, Saffron or Bunhilda) who runs a mobile kitchen-cart. You buy ingredients, draft a party of 3 adventurer patrons, and fight through quests of 3 courses, each course being one monster. In each combat round the barmaid takes one action, such as serving an ingredient to heal or buff a patron, or throwing one at the monster. The patrons and the monster then act automatically, in speed order.
+
+I chose Flask over Django because my data layer already uses SQLAlchemy models, which Flask works with directly.
+
+
+1. FEATURES
+
+- Browse the game world: chapters, zones, quests with their monsters and drops, the ingredient shop catalog, and the equipment catalog.
+- Player saves: create a barmaid save (choosing one of the 3 barmaid classes), view it, and delete it. There's no login; the barmaid name identifies the save.
+- Shop: buy ingredients with gold.
+- Adventurer roster: view each adventurer class's level and saved gear for a player.
+- Quest runs: start a quest, draft a party of 3 from a randomly equipped pool of 5 patrons, then play the fight one barmaid action at a time. The server resolves the rest of each round and returns a log of what happened.
+- Rewards and progress: winning a quest adds its ingredient drops to the player's inventory. The player's current zone controls which quests are available.
+- Resume or abandon: an unfinished run is saved in the database, so a player can pick it back up later or abandon it.
+
+
+2. API ENDPOINTS
+
+All request and response bodies are JSON. POST requests need the header Content-Type: application/json. No auth headers are needed. Errors return 404 (not found), 409 (conflict with the current state) or 422 (invalid input), with a JSON message.
+
+World catalog (read-only)
+- GET /chapters : all story chapters.
+- GET /zones : all zones. Optional query parameter ?chapter_nbr=2
+- GET /zones/<zone_nbr> : one zone, including its tavern name and culinary theme.
+- GET /zones/<zone_nbr>/quests : the quests in a zone.
+- GET /quests/<quest_nbr> : one quest, including its 3 monsters (one per course) and its item drops.
+- GET /items : the ingredient catalog with prices.
+- GET /equipment : the weapon and armor catalog. Optional query parameters ?type=weapon|armor|both&tier=novice|veteran|elite&rarity=common|uncommon|rare|shiny
+
+Players
+- POST /players : create a save. Body: {"barmaid_name": "Bran", "barmaid_class": "Bunhilda"}. Returns 201 with the new save and its starting gold and pantry. Returns 409 if the name is taken, and 422 if the class isn't valid.
+- GET /players/<barmaid_name> : the save's gold, super charge, current zone, class and pantry.
+- DELETE /players/<barmaid_name> : delete the save and everything that belongs to it. Returns 204.
+- GET /players/<barmaid_name>/inventory : ingredient quantities.
+- POST /players/<barmaid_name>/purchases : buy ingredients. Body: {"item_nbr": 3, "quantity": 2}. Returns the updated gold and inventory. Returns 422 if the player can't afford it.
+- GET /players/<barmaid_name>/adventurers : level and gear for each adventurer class.
+
+Quest runs (playing the game)
+- POST /players/<barmaid_name>/runs : start a quest. Body: {"quest_nbr": 1}. The server rolls random gear for a pool of 5 patrons, saves it, and returns the run with status "drafting". Returns 409 if the player already has an unfinished run, and 422 if the quest isn't in a zone the player has reached.
+- GET /players/<barmaid_name>/runs : the player's run history. Optional query parameter ?status=won|lost|abandoned|drafting|in_combat
+- GET /runs/<run_nbr> : the current state of a run: status, course, round, monster HP, party HP and meters, and the barmaid's super charge and pantry.
+- POST /runs/<run_nbr>/party : draft the party. Body: {"picks": [1, 3, 4]}, exactly 3 different slots from 1 to 5. The status changes to "in_combat" and the first course's monster is served.
+- POST /runs/<run_nbr>/actions : the barmaid's action for the current round. Body: {"round_nbr": 4, "action": 2, "target_slot": 3}. action is 1-3 for the barmaid's abilities, 4 to polish tumblers (skip the turn and scavenge 1 random ingredient), or 5 for the super ability. target_slot is only needed for abilities that target one patron. The server applies the action, runs the patrons' and monster's turns, advances to the next course when the monster dies, and pays out the drops when the quest is won. Returns the round's event log and the new state. Returns 409 if round_nbr doesn't match the current round (this stops a duplicate submit from acting twice) or if the run isn't in combat. Returns 422 for an invalid action, missing ingredients, or a super ability that isn't charged yet.
+- DELETE /runs/<run_nbr> : abandon the run. The row is kept with status "abandoned" for history.
+
+
+3. DATABASE
+
+Database name: battles_and_barmaids
+
+Most of these tables already exist in my SQL course project. New for this project: players.barmaid_class, the two quest-run tables, and the extra CHECK constraints on numeric columns. Adventurer stats (HP, attack, speed, aggro) are defined per class in the Python code, so they aren't stored in the database.
+
+Relationships (in place of an ER diagram)
+- chapters 1-to-many zones 1-to-many quests 1-to-many monsters
+- quests many-to-many items, through quest_drops
+- players 1-to-many player_inventory, many-to-1 items
+- players 1-to-many player_adventurers; equipment 1-to-many player_adventurers (weapon and armor)
+- players 1-to-many quest_runs, many-to-1 quests
+- quest_runs 1-to-many quest_run_patrons; equipment 1-to-many quest_run_patrons (weapon and armor)
+
+items (ingredient catalog)
+- item_nbr SERIAL, primary key
+- name TEXT, not null, unique
+- emoji TEXT, not null
+- cost INTEGER, not null, CHECK (cost >= 0)
+
+chapters (story chapters)
+- chapter_nbr INTEGER, primary key
+- name TEXT, not null
+- description TEXT, not null
+
+zones (locations, each with its own tavern)
+- zone_nbr SERIAL, primary key
+- chapter_nbr INTEGER, not null, foreign key to chapters(chapter_nbr)
+- name TEXT, not null, unique
+- description TEXT, not null
+- tavern_name TEXT, not null
+- culinary_theme TEXT, not null
+
+quests
+- quest_nbr INTEGER, primary key
+- zone_nbr INTEGER, not null, foreign key to zones(zone_nbr), indexed
+- name TEXT, not null
+- description TEXT, not null
+- is_boss BOOLEAN, not null, default false
+
+monsters (one per quest course)
+- quest_nbr INTEGER, not null, foreign key to quests(quest_nbr)
+- course INTEGER, not null, CHECK (course BETWEEN 1 AND 3)
+- name TEXT, not null
+- hp, speed, attack INTEGER, not null, each CHECK (> 0)
+- emoji TEXT, not null
+- resistant_damage_type TEXT, nullable, CHECK IN ('fillet', 'skewer', 'tenderize', 'retro')
+- resistant_element TEXT, nullable, CHECK IN ('spicy', 'frosty', 'tingly', 'umami')
+- Primary key (quest_nbr, course)
+
+quest_drops (items won by clearing a quest)
+- quest_nbr INTEGER, not null, foreign key to quests(quest_nbr)
+- item_nbr INTEGER, not null, foreign key to items(item_nbr)
+- quantity INTEGER, not null, CHECK (quantity > 0)
+- Primary key (quest_nbr, item_nbr)
+
+equipment (weapon and armor catalog)
+- equipment_nbr SERIAL, primary key
+- name TEXT, not null, unique
+- type TEXT, not null, CHECK IN ('weapon', 'armor', 'both')
+- tier TEXT, not null, CHECK IN ('novice', 'veteran', 'elite')
+- rarity TEXT, not null, CHECK IN ('common', 'uncommon', 'rare', 'shiny')
+- damage_type TEXT, nullable, same CHECK list as monsters.resistant_damage_type
+- element TEXT, nullable, same CHECK list as monsters.resistant_element
+- power INTEGER, not null, CHECK (power >= 0)
+- cost INTEGER, not null, CHECK (cost >= 0)
+
+players (one row per save)
+- player_nbr SERIAL, primary key
+- barmaid_name TEXT, not null, unique
+- barmaid_class TEXT, not null, CHECK IN ('Marigold', 'Saffron', 'Bunhilda')
+- gold INTEGER, not null, default 10, CHECK (gold >= 0)
+- barmaid_super_charge INTEGER, not null, default 0, CHECK (BETWEEN 0 AND 100)
+- current_zone_nbr INTEGER, not null, default 1, foreign key to zones(zone_nbr)
+- updated_at TIMESTAMP, not null, default now()
+
+player_inventory
+- player_nbr INTEGER, not null, foreign key to players(player_nbr) ON DELETE CASCADE
+- item_nbr INTEGER, not null, foreign key to items(item_nbr)
+- quantity INTEGER, not null, CHECK (quantity >= 0)
+- Primary key (player_nbr, item_nbr)
+
+player_adventurers (a player's progress with each adventurer class)
+- player_nbr INTEGER, not null, foreign key to players(player_nbr) ON DELETE CASCADE
+- adventurer_class TEXT, not null, CHECK IN ('Paladin', 'Warrior', 'Ranger', 'Rogue', 'Mage')
+- level INTEGER, not null, default 1, CHECK (level >= 1)
+- weapon_nbr INTEGER, nullable, foreign key to equipment(equipment_nbr)
+- armor_nbr INTEGER, nullable, foreign key to equipment(equipment_nbr)
+- Primary key (player_nbr, adventurer_class)
+
+quest_runs (new: one attempt at a quest, saved between requests)
+- run_nbr SERIAL, primary key
+- player_nbr INTEGER, not null, foreign key to players(player_nbr) ON DELETE CASCADE
+- quest_nbr INTEGER, not null, foreign key to quests(quest_nbr)
+- status TEXT, not null, default 'drafting', CHECK IN ('drafting', 'in_combat', 'won', 'lost', 'abandoned')
+- course INTEGER, not null, default 1, CHECK (course BETWEEN 1 AND 3)
+- round_nbr INTEGER, not null, default 1, CHECK (round_nbr >= 1)
+- monster_hp INTEGER, nullable (set when combat starts)
+- started_at TIMESTAMP, not null, default now()
+- ended_at TIMESTAMP, nullable
+- Partial unique index on (player_nbr) WHERE status IN ('drafting', 'in_combat'), so each player can have only one unfinished run
+
+quest_run_patrons (new: the 5-patron draft pool and the party's live combat state)
+- run_nbr INTEGER, not null, foreign key to quest_runs(run_nbr) ON DELETE CASCADE
+- slot INTEGER, not null, CHECK (slot BETWEEN 1 AND 5)
+- adventurer_class TEXT, not null, same CHECK list as player_adventurers
+- is_drafted BOOLEAN, not null, default false
+- hp INTEGER, not null, CHECK (hp >= 0)
+- max_hp INTEGER, not null, CHECK (max_hp > 0)
+- power_meter INTEGER, not null, default 0, CHECK (BETWEEN 0 AND 100)
+- defense_buff INTEGER, not null, default 0, CHECK (defense_buff >= 0)
+- ignore_def BOOLEAN, not null, default false
+- weapon_nbr INTEGER, nullable, foreign key to equipment(equipment_nbr)
+- armor_nbr INTEGER, nullable, foreign key to equipment(equipment_nbr)
+- Primary key (run_nbr, slot); unique (run_nbr, adventurer_class)
+
+During a run, the barmaid spends ingredients straight from player_inventory and builds super charge on players.barmaid_super_charge, so those don't need copies in the run tables.
+
+
+4. PLAN FOR THE COMING WEEKS
+
+- Week 2: separate the game rules from the terminal code (input, print, sound), build the Flask app with the catalog and player endpoints, and set up docker-compose.yml with web and db services. Postgres loads schema.sql on first start, and the app reads its connection from a DATABASE_URL environment variable.
+- Week 3: add the quest-run endpoints and pytest tests. Combat randomness will use a seeded random generator so fights can be replayed exactly in tests.
+- Week 4: deploy to a cloud provider and/or add a GitHub Actions workflow that builds and tests the app.

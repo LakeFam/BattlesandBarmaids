@@ -1,16 +1,26 @@
+import os
 from datetime import datetime
 
 from sqlalchemy import ForeignKey, create_engine, func, select
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column
 
-# Fill these in to match your local Postgres server.
-HOST = "localhost"
-PORT = 5432
-DBNAME = "python_fundamentals"
-USER = "postgres"
-PASSWORD = "changeme"
+# Set DATABASE_URL to point at a different Postgres server. The default is the
+# db service from docker-compose.yml, which is published on localhost:5434.
+DATABASE_URL = os.environ.get(
+    "DATABASE_URL",
+    "postgresql+psycopg://postgres:postgres@localhost:5434/battles_and_barmaids",
+)
 
-engine = create_engine(f"postgresql+psycopg://{USER}:{PASSWORD}@{HOST}:{PORT}/{DBNAME}")
+engine = create_engine(DATABASE_URL)
+
+# Allowed values for the players.barmaid_class and
+# player_adventurers.adventurer_class CHECK constraints in schema.sql.
+BARMAID_CLASSES = ("Marigold", "Saffron", "Bunhilda")
+ADVENTURER_CLASSES = ("Paladin", "Warrior", "Ranger", "Rogue", "Mage")
+
+# Every new save starts with this much gold and this many of each ingredient.
+STARTING_GOLD = 10
+STARTING_PANTRY_QTY = 6
 
 # schema.sql is the source of truth for the actual table definitions
 # (constraints, defaults, indexes). These model classes just describe the
@@ -75,6 +85,7 @@ class PlayerRow(Base):
     __tablename__ = "players"
     player_nbr: Mapped[int] = mapped_column(primary_key=True)
     barmaid_name: Mapped[str]
+    barmaid_class: Mapped[str]
     gold: Mapped[int]
     barmaid_super_charge: Mapped[int]
     current_zone_nbr: Mapped[int] = mapped_column(ForeignKey("zones.zone_nbr"))
@@ -226,6 +237,7 @@ def create_player(player):
     with Session(engine) as session:
         row = PlayerRow(
             barmaid_name=player.barmaid_name,
+            barmaid_class=type(player).__name__,  # "Marigold", "Saffron" or "Bunhilda"
             gold=player.gold,
             barmaid_super_charge=player.barmaid_super_charge,
             current_zone_nbr=player.current_zone_nbr,
