@@ -26,10 +26,15 @@ class ActionError(Exception):
         super().__init__(message)
         self.sound = sound
 
+# Regulars fight harder for their barmaid.
+REGULAR_HP_BONUS = 12
+REGULAR_ATTACK_BONUS = 3
+
 # Base class for the 3 barmaids; each supplies its kit via build_abilities()/build_special().
 class Player:
     name = None
     kit_description = None
+    regulars = ()  # patron class names
 
     def __init__(self):
         self.gold = database.STARTING_GOLD
@@ -50,6 +55,15 @@ class Player:
 
     def build_special(self):
         return None
+
+    # Boosts her regulars in a freshly drafted bar pool.
+    def welcome_regulars(self, patrons):
+        for p in patrons:
+            if type(p).__name__ in self.regulars:
+                p.is_regular = True
+                p.max_hp += REGULAR_HP_BONUS
+                p.hp += REGULAR_HP_BONUS
+                p.attack_power += REGULAR_ATTACK_BONUS
 
     # Applies one action and returns its events. target is only for abilities aimed at one patron.
     def act(self, choice, patrons, monster, target=None, rng=random):
@@ -102,19 +116,20 @@ class Player:
 
 class Marigold(Player):
     name = "Marigold the Mender"
-    kit_description = "Heavy healing, light offense."
+    kit_description = "Steady healing, light offense. Regulars: Faelen (Rogue) and Unit Micro-90 (Mage)."
+    regulars = ("Rogue", "Mage")
 
     def build_abilities(self):
         return [
             {
-                "label": "🩹 Serve: Tend the Wounds - Bandage & Heal 1 patron",
+                "label": "🩹 Serve: Tend the Wounds - Heal 1 patron (+15 HP)",
                 "cost": {"🧀 Aged Cheddar": 1, "🌾 Mighty Malt": 1},
                 "charge": 25,
                 "target": "patron",
                 "effect": self.tend_wounds,
             },
             {
-                "label": "🍲 Serve: Round of Comfort - Heal the whole party a little",
+                "label": "🍲 Serve: Round of Comfort - Heal the whole party a little (+6 HP)",
                 "cost": {"🧅 Watery Onion": 1, "🌶️ Chilly Peppers": 1},
                 "charge": 30,
                 "target": "party",
@@ -131,54 +146,53 @@ class Marigold(Player):
 
     def build_special(self):
         return {
-            "label": "✨ LAST CALL MIRACLE - Fully heals & fortifies your weakest patron",
+            "label": "✨ LAST CALL MIRACLE - Heals the whole party (+15 HP)",
             "cost": {"🍖 Holy Ham": 2},
             "target": "party",
             "effect": self.last_call_miracle,
         }
 
     def tend_wounds(self, target):
-        target.defense_buff += 3
-        target.hp = min(target.max_hp, target.hp + 25)
-        return [event(f"🩹 You tend {target.name}'s wounds with warm broth and clean linen! (+3 Defense, +25 HP)", "barmaid_bandage")]
+        target.hp = min(target.max_hp, target.hp + 15)
+        return [event(f"🩹 You tend {target.name}'s wounds with warm broth and clean linen! (+15 HP)", "barmaid_bandage")]
 
     def round_of_comfort(self, living_patrons):
         for p in living_patrons:
-            p.hp = min(p.max_hp, p.hp + 10)
-        return [event("🍲 You ladle out a round of hearty soup for everyone! (+10 HP to the whole party)", "combat_heal")]
+            p.hp = min(p.max_hp, p.hp + 6)
+        return [event("🍲 You ladle out a round of hearty soup for everyone! (+6 HP to the whole party)", "combat_heal")]
 
     def bitter_herb_toss(self, monster):
         monster.attack_power = max(1, monster.attack_power - 2)
         return [event(f"🌿 You toss bitter herbs at {monster.name}! Its Attack Flavor dips to {monster.attack_power}.", "barmaid_haunt")]
 
     def last_call_miracle(self, living_patrons):
-        target = min(living_patrons, key=lambda p: p.hp)
-        target.hp = target.max_hp
-        target.defense_buff += 5
-        return [event(f"✨ LAST CALL MIRACLE! {target.name} is fully healed and fortified!", "barmaid_miracle", flash=True)]
+        for p in living_patrons:
+            p.hp = min(p.max_hp, p.hp + 15)
+        return [event("✨ LAST CALL MIRACLE! The whole party is back on its feet! (+15 HP)", "barmaid_miracle", flash=True)]
 
 class Saffron(Player):
     name = "Saffron the Morale-Brewer"
-    kit_description = "Big buffs, a splash of healing."
+    kit_description = "Big buffs, a splash of healing. Regulars: Grimble (Warrior) and Willow (Ranger)."
+    regulars = ("Warrior", "Ranger")
 
     def build_abilities(self):
         return [
             {
-                "label": "🌶️  Serve: Round on the House - Their next strike cuts clean through armor",
+                "label": "🌶️  Serve: Round on the House - Their next strike hits twice as hard",
                 "cost": {"🌶️ Chilly Peppers": 1, "🧅 Watery Onion": 1},
                 "charge": 35,
                 "target": "patron",
                 "effect": self.round_on_the_house,
             },
             {
-                "label": "🍺 Serve: Rally Cry Ale - +4 Attack, for the rest of the fight",
+                "label": "🍺 Serve: Rally Cry Ale - +6 Attack, for the rest of the fight",
                 "cost": {"🌾 Mighty Malt": 1, "🧀 Aged Cheddar": 1},
                 "charge": 30,
                 "target": "patron",
                 "effect": self.rally_cry_ale,
             },
             {
-                "label": "☕ Serve: Chicory Cure - A quick pick-me-up (+10 HP, no shield)",
+                "label": "☕ Serve: Chicory Cure - A quick pick-me-up (+15 HP)",
                 "cost": {"🧀 Aged Cheddar": 1},
                 "charge": 20,
                 "target": "patron",
@@ -188,32 +202,33 @@ class Saffron(Player):
 
     def build_special(self):
         return {
-            "label": "🎺 TAVERN ANTHEM - The whole party's next strikes cut through armor",
+            "label": "🎺 TAVERN ANTHEM - The whole party's next strikes hit twice as hard",
             "cost": {"🍖 Holy Ham": 2},
             "target": "party",
             "effect": self.tavern_anthem,
         }
 
     def round_on_the_house(self, target):
-        target.ignore_def = True
-        return [event(f"🌶️  You pour a flaming shot for {target.name}! Their next strike cuts right through armor!", "barmaid_buff")]
+        target.double_strike = True
+        return [event(f"🌶️  You pour a flaming shot for {target.name}! Their next strike will hit twice as hard!", "barmaid_buff")]
 
     def rally_cry_ale(self, target):
-        target.attack_power += 4
+        target.attack_power += 6
         return [event(f"🍺 You pour {target.name} a Rally Cry Ale! Attack Flavor permanently rises to {target.attack_power}!", "barmaid_rally")]
 
     def chicory_cure(self, target):
-        target.hp = min(target.max_hp, target.hp + 10)
-        return [event(f"☕ You slide {target.name} a mug of chicory brew! (+10 HP)", "barmaid_heal")]
+        target.hp = min(target.max_hp, target.hp + 15)
+        return [event(f"☕ You slide {target.name} a mug of chicory brew! (+15 HP)", "barmaid_heal")]
 
     def tavern_anthem(self, living_patrons):
         for p in living_patrons:
-            p.ignore_def = True
-        return [event("🎺 TAVERN ANTHEM! The whole party's next strikes cut through armor!", "barmaid_anthem", flash=True)]
+            p.double_strike = True
+        return [event("🎺 TAVERN ANTHEM! The whole party's next strikes hit twice as hard!", "barmaid_anthem", flash=True)]
 
 class Bunhilda(Player):
     name = "Bunhilda the Brawler"
-    kit_description = "Direct damage and debuffs, with just enough healing to get by."
+    kit_description = "Direct damage and debuffs, just enough healing. Regulars: Princess Blue (Paladin) and Faelen (Rogue)."
+    regulars = ("Paladin", "Rogue")
 
     def build_abilities(self):
         return [
@@ -232,7 +247,7 @@ class Bunhilda(Player):
                 "effect": self.ghost_pepperoni_slice,
             },
             {
-                "label": "🩹 Serve: Bar Rag Bandage - A quick patch-up (+10 HP)",
+                "label": "🩹 Serve: Bar Rag Bandage - A quick patch-up (+15 HP)",
                 "cost": {"🌾 Mighty Malt": 1},
                 "charge": 20,
                 "target": "patron",
@@ -249,16 +264,16 @@ class Bunhilda(Player):
         }
 
     def flaming_shot(self, monster):
-        monster.hp -= 12
-        return [event(f"🔥 You hurl a flaming shot straight at {monster.name} for 12 damage!", "barmaid_fireshot")]
+        monster.hp -= 15
+        return [event(f"🔥 You hurl a flaming shot straight at {monster.name} for 15 damage!", "barmaid_fireshot")]
 
     def ghost_pepperoni_slice(self, monster):
         monster.attack_power = max(1, monster.attack_power - 4)
         return [event(f"👻🍕 You toss a GHOST PEPPERONI SLICE at {monster.name}! Haunted by the heat, its Attack Flavor drops to {monster.attack_power}!", "barmaid_haunt")]
 
     def bar_rag_bandage(self, target):
-        target.hp = min(target.max_hp, target.hp + 10)
-        return [event(f"🩹 You wrap {target.name}'s wound in a bar rag and a shot of courage! (+10 HP)", "barmaid_heal")]
+        target.hp = min(target.max_hp, target.hp + 15)
+        return [event(f"🩹 You wrap {target.name}'s wound in a bar rag and a shot of courage! (+15 HP)", "barmaid_heal")]
 
     def holy_ham_grenade(self, monster):
         monster.hp -= 20
@@ -277,7 +292,7 @@ class Character:
         self.aggro = aggro
         self.defense_buff = 0
         self.power_meter = 0
-        self.ignore_def = False
+        self.double_strike = False  # next hit deals double damage
 
     def is_alive(self):
         return self.hp > 0
@@ -297,6 +312,7 @@ class Patron(Character):
         super().__init__(name, self.hp, self.speed, self.attack, self.aggro)
         self.weapon = None
         self.armor = None
+        self.is_regular = False
 
     # Patron-only until monsters get specials.
     def execute_special(self, monster, patrons):
@@ -307,7 +323,7 @@ class Patron(Character):
         return []
 
 class Paladin(Patron):
-    hp, speed, attack, aggro = 60, 4, 8, 9
+    hp, speed, attack, aggro = 50, 4, 8, 6
     attack_sound = "paladin_attack"
     special_sound = "paladin_special"
     attack_emoji = "🍳"
@@ -317,10 +333,10 @@ class Paladin(Patron):
 
     def special_effect(self, monster, patrons):
         target = min(patrons, key=lambda p: p.hp)
-        heal = 20
+        heal = 12
         target.hp = min(target.max_hp, target.hp + heal)
-        target.defense_buff += 3
-        return [event(f"🛡️  {self.name} serves a hearty BLESSED STEW! {target.name} recovers {heal} HP and gains +3 Crust Defense!")]
+        target.defense_buff += 2
+        return [event(f"🛡️  {self.name} serves a hearty BLESSED STEW! {target.name} recovers {heal} HP and gains +2 Crust Defense!")]
 
 class Warrior(Patron):
     hp, speed, attack, aggro = 50, 6, 11, 7
@@ -352,7 +368,7 @@ class Ranger(Patron):
         return [event(f"🏹 {self.name} fires a SKEWERING TOOTHPICK! Deals {dmg} damage and saps the monster's Attack Flavor!")]
 
 class Rogue(Patron):
-    hp, speed, attack, aggro = 30, 8, 14, 5
+    hp, speed, attack, aggro = 38, 8, 14, 5
     attack_sound = "rogue_attack"
     special_sound = "rogue_special"
     attack_emoji = "🔪"
@@ -366,7 +382,7 @@ class Rogue(Patron):
         return [event(f"🗡️ {self.name} executes a ZESTY BACKSTAB! Carves past armor for {dmg} vital damage!")]
 
 class Mage(Patron):
-    hp, speed, attack, aggro = 25, 5, 16, 4
+    hp, speed, attack, aggro = 34, 5, 16, 4
     attack_sound = "robot_attack"
     special_sound = "robot_special"
     attack_emoji = "✨"

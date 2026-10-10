@@ -136,7 +136,7 @@ class QuestRunPatronRow(Base):
     attack_power: Mapped[int]
     power_meter: Mapped[int] = mapped_column(server_default="0")
     defense_buff: Mapped[int] = mapped_column(server_default="0")
-    ignore_def: Mapped[bool] = mapped_column(server_default="false")
+    double_strike: Mapped[bool] = mapped_column(server_default="false")  # migrations/003_rebalance.sql
     weapon_nbr: Mapped[int | None] = mapped_column(ForeignKey("equipment.equipment_nbr"))
     armor_nbr: Mapped[int | None] = mapped_column(ForeignKey("equipment.equipment_nbr"))
 

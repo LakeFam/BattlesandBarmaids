@@ -58,13 +58,13 @@ def test_resisted_damage_never_drops_below_one():
 # --- Turns ---
 
 def test_monster_attack_is_reduced_by_armor():
-    patron = Paladin(Paladin.name)  # 60 HP
+    patron = Paladin(Paladin.name)  # 50 HP
     patron.armor = OVEN_MITTS
     monster = make_monster(attack=20)
 
     combat.take_turn({"type": "monster"}, [patron], monster)
 
-    assert patron.hp == 60 - (20 - 5)
+    assert patron.hp == 50 - (20 - 5)
     assert patron.power_meter == 35
 
 def test_patron_attack_adds_weapon_power():
@@ -77,15 +77,15 @@ def test_patron_attack_adds_weapon_power():
     assert monster.hp == 100 - (11 + 6)
     assert patron.power_meter == 25
 
-def test_ignore_defense_adds_five_damage_once():
-    patron = Warrior(Warrior.name)
-    patron.ignore_def = True
+def test_double_strike_doubles_one_hit():
+    patron = Warrior(Warrior.name)  # attack 11
+    patron.double_strike = True
     monster = make_monster(hp=100)
 
     combat.take_turn({"type": "patron", "ref": patron}, [patron], monster)
 
-    assert monster.hp == 100 - (11 + 5)
-    assert patron.ignore_def is False
+    assert monster.hp == 100 - 11 * 2
+    assert patron.double_strike is False
 
 # --- Barmaid ---
 
@@ -102,13 +102,22 @@ def test_deduct_supplies_removes_ingredients():
 
     assert barmaid.pantry["🍖 Holy Ham"] == 4
 
-def test_flaming_shot_deals_twelve_damage():
+def test_flaming_shot_deals_fifteen_damage():
     barmaid = Bunhilda()
     monster = make_monster(hp=100)
 
     barmaid.flaming_shot(monster)
 
-    assert monster.hp == 88
+    assert monster.hp == 85
+
+def test_regulars_get_more_hp_and_attack():
+    pool = [Paladin(Paladin.name), Warrior(Warrior.name)]
+
+    Bunhilda().welcome_regulars(pool)  # regulars: Paladin and Rogue
+
+    paladin, warrior = pool
+    assert paladin.is_regular and (paladin.max_hp, paladin.hp, paladin.attack_power) == (50 + 12, 50 + 12, 8 + 3)
+    assert not warrior.is_regular and (warrior.max_hp, warrior.attack_power) == (50, 11)
 
 # --- Barmaid actions ---
 
@@ -121,7 +130,7 @@ def test_action_spends_ingredients_and_builds_charge():
 
     events = barmaid.act(1, make_party(), monster)  # Flaming Shot
 
-    assert monster.hp == 88
+    assert monster.hp == 85
     assert barmaid.pantry["🌶️ Chilly Peppers"] == 5
     assert barmaid.barmaid_super_charge == 30
     assert events[0]["sounds"] == ["barmaid_fireshot"]
@@ -133,8 +142,7 @@ def test_patron_ability_heals_the_chosen_target():
 
     barmaid.act(1, party, make_monster(), target=party[1])  # Tend the Wounds
 
-    assert party[1].hp == 35
-    assert party[1].defense_buff == 3
+    assert party[1].hp == 10 + 15
 
 def test_patron_ability_needs_a_living_target():
     barmaid = Marigold()
@@ -201,9 +209,9 @@ def test_round_stops_when_the_monster_dies():
 
 def test_killing_blow_adds_a_death_message():
     barmaid = Bunhilda()
-    monster = make_monster(hp=12)
+    monster = make_monster(hp=15)
 
-    events = barmaid.act(1, make_party(), monster)  # Flaming Shot, 12 damage
+    events = barmaid.act(1, make_party(), monster)  # Flaming Shot, 15 damage
 
     assert events[-1]["sounds"] == ["monster_death"]
 

@@ -53,6 +53,7 @@ def start_run(session, player_row, quest_nbr):
 
     pool = [cls(cls.name) for cls in Patron.classes]
     roll_equipment(pool, equipment().values(), round_rng(run, 0))  # round 0: the draft pool
+    BARMAID_CLASSES[player_row.barmaid_class]().welcome_regulars(pool)
     for slot, patron in enumerate(pool, start=1):
         session.add(QuestRunPatronRow(
             run_nbr=run.run_nbr, slot=slot, adventurer_class=type(patron).__name__,
@@ -131,7 +132,7 @@ def load_patron(row):
     patron.attack_power = row.attack_power
     patron.power_meter = row.power_meter
     patron.defense_buff = row.defense_buff
-    patron.ignore_def = row.ignore_def
+    patron.double_strike = row.double_strike
     patron.weapon = equipment().get(row.weapon_nbr)
     patron.armor = equipment().get(row.armor_nbr)
     return patron
@@ -141,7 +142,7 @@ def save_patron(row, patron):
     row.attack_power = patron.attack_power
     row.power_meter = patron.power_meter
     row.defense_buff = patron.defense_buff
-    row.ignore_def = patron.ignore_def
+    row.double_strike = patron.double_strike
 
 def load_monster(run):
     monster = Monster.from_enemy(quests()[run.quest_nbr]["enemies"][run.course])

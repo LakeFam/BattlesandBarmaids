@@ -149,9 +149,11 @@ class GameEngine:
         for cls in Patron.classes:
             bar_pool.append(cls(cls.name))
         roll_equipment(bar_pool, EQUIPMENT.values())
+        self.player.welcome_regulars(bar_pool)
 
         for i, c in enumerate(bar_pool, start=1):
-            print(f"[{i}] {c.name} ({type(c).__name__}) - HP: {c.hp} | Atk: {c.attack_power} | Aggro: {c.aggro}")
+            regular = " ⭐ Your regular!" if c.is_regular else ""
+            print(f"[{i}] {c.name} ({type(c).__name__}) - HP: {c.hp} | Atk: {c.attack_power} | Aggro: {c.aggro}{regular}")
             print(f"     🗡️ Weapon: {c.weapon['name']} (+{c.weapon['power']}) | 🛡️ Armor: {c.armor['name']} (+{c.armor['power']})")
 
         print("\nChoose 3 patrons from the bar pool (e.g., enter numbers space-separated like '1 3 4'):")

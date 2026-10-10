@@ -34,14 +34,14 @@ The Syndicate utilizes algorithmic efficiency, artificial preservatives, and mas
 ### The Barmaids (playable)
 The player picks one barmaid to run the mobile kitchen-cart. She doesn't fight directly. Each round she serves ingredients to her patrons or tosses them at the monster.
 
-- **Marigold the Mender:** Heavy healing, light offense. Tends wounds, ladles out a Round of Comfort for the whole party, and tosses bitter herbs to dull the enemy's attack. Her special, **Last Call Miracle**, fully heals and fortifies the weakest patron.
-- **Saffron the Morale-Brewer:** Big buffs, a splash of healing. Pours flaming shots that let a patron's next strike cut through armor, Rally Cry Ales that permanently raise attack, and Chicory Cures. Her special, **Tavern Anthem**, lets the whole party's next strikes cut through armor.
-- **Bunhilda the Brawler:** Direct damage and debuffs, with just enough healing to get by. Hurls Flaming Shots to the Face, haunts monsters with Ghost Pepperoni Slices, and patches patrons up with Bar Rag Bandages. Her special, **Holy Ham Grenade**, does massive damage.
+- **Marigold the Mender:** Steady healing, light offense. Tends wounds, ladles out a Round of Comfort for the whole party, and tosses bitter herbs to dull the enemy's attack. Her special, **Last Call Miracle**, heals the whole party. Her regulars are Faelen and Unit Micro-90, the fragile hitters she keeps patched up.
+- **Saffron the Morale-Brewer:** Big buffs, a splash of healing. Pours flaming shots that make a patron's next strike hit twice as hard, Rally Cry Ales that permanently raise attack, and Chicory Cures. Her special, **Tavern Anthem**, doubles the whole party's next strikes. Her regulars are Grimble and Willow.
+- **Bunhilda the Brawler:** Direct damage and debuffs, with just enough healing to get by. Hurls Flaming Shots to the Face, haunts monsters with Ghost Pepperoni Slices, and patches patrons up with Bar Rag Bandages. Her special, **Holy Ham Grenade**, does massive damage. Her regulars are Princess Blue and Faelen.
 
 ### The Brigade (patrons)
 Five adventurers wait at the bar. The barmaid drafts three for each quest.
 
-- **Princess Blue (Natural Leaven Healer, Paladin):** The true, gentle personality of a King's daughter, still living in the palace under the Syndicate's corporate "pink-slime" mind control. When free of the programming, she sneaks out to heal the resistance. The sturdiest patron and the one monsters target most. Her **Blessed Stew** heals the weakest ally.
+- **Princess Blue (Natural Leaven Healer, Paladin):** The true, gentle personality of a King's daughter, still living in the palace under the Syndicate's corporate "pink-slime" mind control. When free of the programming, she sneaks out to heal the resistance. A sturdy front-liner who draws the monster's attention. Her **Blessed Stew** heals the weakest ally.
 - **Grimble the Griddle-Master (Warrior):** A hard-hitting brawler with a griddle and a hammer. His **Meat-Hook Smash** deals double damage.
 - **Willow (Village Pine Scout, Ranger):** A childhood companion from the Village of the Hearth. An agile archer who knows every game trail and salt deposit in the Taplands ridges. Her **Skewering Toothpick** wounds the monster and saps its attack.
 - **Faelen the Fermenter (Rogue):** A fragile but deadly fighter who carries a fermentation jar. Their **Zesty Backstab** carves past armor for heavy damage.
@@ -53,6 +53,7 @@ Five adventurers wait at the bar. The barmaid drafts three for each quest.
 - **Quests are three-course dinners.** Each quest serves three monsters in a row, one per course, ending with the boss. Patrons get a quick healing snack between courses.
 - **Ingredients are the barmaid's ammunition:** Mighty Malt, Aged Cheddar, Chilly Peppers, Watery Onion, Holy Ham and Ghost Pepperoni. Every ability costs some, and quests drop more. Polishing tumblers skips her turn to scavenge one.
 - **Zest builds as the fight goes on.** The barmaid's Super Charge fills as she serves, unlocking her special at 100%. Each patron's Appetite Meter fills as they attack and take hits, triggering their special when full.
+- **Regulars fight harder.** Each barmaid has two regulars among the patrons. Drafted for her, they get extra HP and attack, so each barmaid has her own best party.
 - **Gear matters.** Patrons are re-equipped with random weapons and armor at each draft. Weapons carry a damage type (fillet, skewer, tenderize, retro) or an element (spicy, frosty, tingly, umami), and some monsters resist one, which halves the damage.
 - **Winning pays.** Clearing a quest earns 30–60 gold in tips plus ingredient drops. Clearing a region's boss opens the road to the next region. A failed quest costs 15 gold.
 

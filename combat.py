@@ -55,10 +55,10 @@ def take_turn(actor, patrons, monster, rng=random):
         dmg = patron.attack_power
         if patron.weapon is not None:
             dmg += patron.weapon["power"]
-        # One-time +5 armor-piercing bonus
-        if patron.ignore_def:
-            dmg += 5
-            patron.ignore_def = False
+        # From Saffron's Round on the House or Tavern Anthem
+        if patron.double_strike:
+            dmg *= 2
+            patron.double_strike = False
         dmg, resisted = apply_monster_resistance(patron, monster, dmg)
         monster.hp -= dmg
         flavor_verb = rng.choice(patron.flavor_text)

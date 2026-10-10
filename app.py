@@ -376,18 +376,19 @@ def barmaid_actions_json(player):
     })
     return actions
 
-def run_patron_json(row):
+def run_patron_json(row, regulars):
     return {
         "slot": row.slot,
         "adventurer_class": row.adventurer_class,
         "name": runs.PATRON_CLASSES[row.adventurer_class].name,
+        "is_regular": row.adventurer_class in regulars,
         "is_drafted": row.is_drafted,
         "hp": row.hp,
         "max_hp": row.max_hp,
         "attack_power": row.attack_power,
         "power_meter": row.power_meter,
         "defense_buff": row.defense_buff,
-        "ignore_def": row.ignore_def,
+        "double_strike": row.double_strike,
         "weapon": runs.equipment().get(row.weapon_nbr),
         "armor": runs.equipment().get(row.armor_nbr),
     }
@@ -406,6 +407,7 @@ def run_summary_json(run):
 
 def run_json(session, run):
     player = session.get(PlayerRow, run.player_nbr)
+    regulars = runs.BARMAID_CLASSES[player.barmaid_class].regulars
     monster = None
     if run.monster_hp is not None:
         enemy = runs.quests()[run.quest_nbr]["enemies"][run.course]
@@ -422,7 +424,7 @@ def run_json(session, run):
         **run_summary_json(run),
         "barmaid_class": player.barmaid_class,
         "monster": monster,
-        "patrons": [run_patron_json(row) for row in runs.patron_rows(session, run)],
+        "patrons": [run_patron_json(row, regulars) for row in runs.patron_rows(session, run)],
         "barmaid": {
             "gold": player.gold,
             "super_charge": player.barmaid_super_charge,

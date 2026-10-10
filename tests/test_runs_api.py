@@ -56,6 +56,14 @@ def test_start_run_rolls_a_pool_of_five_patrons(client):
     assert all(p["weapon"] and p["armor"] and not p["is_drafted"] for p in run["patrons"])
     assert [a["action"] for a in run["barmaid"]["actions"]] == [1, 2, 3, 4, 5]
 
+def test_pool_boosts_the_barmaids_regulars(client):
+    run = client.post("/players/Bunhilda/runs", json={"quest_nbr": 1}).json
+    patrons = {p["adventurer_class"]: p for p in run["patrons"]}
+
+    assert {cls for cls, p in patrons.items() if p["is_regular"]} == {"Paladin", "Rogue"}
+    assert patrons["Paladin"]["max_hp"] == 50 + 12
+    assert patrons["Warrior"]["max_hp"] == 50
+
 def test_second_unfinished_run_conflicts(client):
     start(client)
 
