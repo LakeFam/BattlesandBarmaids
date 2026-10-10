@@ -24,31 +24,31 @@ def party_defeated(patrons):
     return not any(p.is_alive() for p in patrons)
 
 # Patron and monster turns after the barmaid acts. Returns one event list per turn.
-def play_round(patrons, monster):
+def play_round(patrons, monster, rng=random):
     # Jitter the turn order a little.
-    turn_order = [{"type": "monster", "speed": monster.speed + random.randint(-2, 2)}]
+    turn_order = [{"type": "monster", "speed": monster.speed + rng.randint(-2, 2)}]
     for p in patrons:
         if p.is_alive():
-            turn_order.append({"type": "patron", "ref": p, "speed": p.speed + random.randint(-2, 2)})
+            turn_order.append({"type": "patron", "ref": p, "speed": p.speed + rng.randint(-2, 2)})
     turn_order.sort(key=get_speed, reverse=True)
 
     turns = []
     for actor in turn_order:
         if party_defeated(patrons) or not monster.is_alive():
             break
-        events = take_turn(actor, patrons, monster)
+        events = take_turn(actor, patrons, monster, rng)
         if events:
             turns.append(events)
     return turns
 
 # Patron or monster turn. Returns its events.
-def take_turn(actor, patrons, monster):
+def take_turn(actor, patrons, monster, rng=random):
     living_patrons = [p for p in patrons if p.is_alive()]
 
     if actor["type"] == "patron" and actor["ref"].is_alive():
         patron = actor["ref"]
         if patron.power_meter >= 100:
-            events = patron.execute_special(monster, living_patrons)
+            events = patron.execute_special(monster, living_patrons) + monster_death_events(monster, rng)
             patron.power_meter = 0
             return events
 
@@ -61,12 +61,12 @@ def take_turn(actor, patrons, monster):
             patron.ignore_def = False
         dmg, resisted = apply_monster_resistance(patron, monster, dmg)
         monster.hp -= dmg
-        flavor_verb = random.choice(patron.flavor_text)
+        flavor_verb = rng.choice(patron.flavor_text)
         events = [event(f"{patron.attack_emoji} {patron.name} {flavor_verb} the {monster.name} for {dmg} damage!", patron.attack_sound)]
         if resisted:
             trait = patron.weapon["damage_type"] or patron.weapon["element"]
             events.append(event(f"🍽️  {monster.name} is resistant to {trait}! The {patron.weapon['name']} only lands a glancing blow."))
-        events += monster_death_events(monster)
+        events += monster_death_events(monster, rng)
         patron.power_meter = min(100, patron.power_meter + 25)
         return events
     # Monster mash...
@@ -75,7 +75,7 @@ def take_turn(actor, patrons, monster):
         # Target weighted by aggro
         for p in living_patrons:
             weights.append(p.aggro)
-        target = random.choices(living_patrons, weights=weights, k=1)[0]
+        target = rng.choices(living_patrons, weights=weights, k=1)[0]
 
         armor_power = 0
         if target.armor is not None:
@@ -83,7 +83,7 @@ def take_turn(actor, patrons, monster):
         dmg = max(1, monster.attack_power - target.defense_buff - armor_power)
         target.hp -= dmg
 
-        flavor_verb = random.choice(monster.flavor_text)
+        flavor_verb = rng.choice(monster.flavor_text)
         events = [event(f"{monster.attack_emoji} {monster.name} {flavor_verb} {target.name} for {dmg} damage!", monster.attack_sound)]
         if not target.is_alive():
             events.append(event(target.death_message, "patron_death"))
@@ -110,8 +110,8 @@ def clear_course(course, patrons):
     return events
 
 # Gold tips, the quest's drops, and the next zone after a boss.
-def win_quest(player, quest, zones):
-    reward_gold = random.randint(30, 60)
+def win_quest(player, quest, zones, rng=random):
+    reward_gold = rng.randint(30, 60)
     player.gold += reward_gold
     events = [
         event("🎉 ALL 3 COURSES CLEARED! THE MEAL ENDS IN VICTORY! 🎉", "quest_victory", "barmaid_victory", flash=True),

@@ -1,4 +1,5 @@
 # Combat rules, using the game's real classes.
+import random
 import sys
 
 import pytest
@@ -197,6 +198,30 @@ def test_round_stops_when_the_monster_dies():
 
     assert not monster.is_alive()
     assert len(turns) <= 2  # the monster may act first
+
+def test_killing_blow_adds_a_death_message():
+    barmaid = Bunhilda()
+    monster = make_monster(hp=12)
+
+    events = barmaid.act(1, make_party(), monster)  # Flaming Shot, 12 damage
+
+    assert events[-1]["sounds"] == ["monster_death"]
+
+# --- Seeded dice ---
+
+def play_seeded_round(seed):
+    party = make_party()
+    monster = make_monster(hp=500)
+    barmaid = Bunhilda()
+    rng = random.Random(seed)
+
+    events = barmaid.act(barmaid.polish_choice, party, monster, rng=rng)
+    for turn in combat.play_round(party, monster, rng):
+        events += turn
+    return events, [p.hp for p in party], monster.hp, barmaid.pantry
+
+def test_same_seed_plays_the_same_round():
+    assert play_seeded_round(7) == play_seeded_round(7)
 
 # The API will import these rules, so they must not load pygame.
 def test_rules_do_not_load_pygame():

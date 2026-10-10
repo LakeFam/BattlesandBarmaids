@@ -1,7 +1,7 @@
 import os
 from datetime import datetime
 
-from sqlalchemy import ForeignKey, and_, create_engine, func, select
+from sqlalchemy import BigInteger, ForeignKey, and_, create_engine, func, select
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column
 
 # Defaults to the Compose db on localhost:5434.
@@ -123,6 +123,7 @@ class QuestRunRow(Base):
     monster_speed: Mapped[int | None]
     started_at: Mapped[datetime] = mapped_column(server_default=func.now())
     ended_at: Mapped[datetime | None]
+    rng_seed: Mapped[int] = mapped_column(BigInteger)  # migrations/002_quest_run_seed.sql
 
 class QuestRunPatronRow(Base):
     __tablename__ = "quest_run_patrons"

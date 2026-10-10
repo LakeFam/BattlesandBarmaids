@@ -16,7 +16,7 @@ def player_nbr(session):
     return session.execute(select(PlayerRow.player_nbr).where(PlayerRow.barmaid_class == "Bunhilda")).scalar_one()
 
 def add_run(session, **fields):
-    run = QuestRunRow(player_nbr=player_nbr(session), quest_nbr=1, **fields)
+    run = QuestRunRow(player_nbr=player_nbr(session), quest_nbr=1, rng_seed=1, **fields)
     session.add(run)
     session.flush()
     return run

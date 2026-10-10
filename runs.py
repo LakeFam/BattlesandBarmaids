@@ -1,5 +1,7 @@
 # Quest runs for the API: loads a saved run as game objects, plays it with the shared rules, and saves it back.
 import functools
+import random
+import secrets
 
 from sqlalchemy import func, select
 
@@ -26,6 +28,13 @@ def zones():
 def equipment():
     return database.get_equipment()
 
+def new_seed():
+    return secrets.randbits(53)
+
+# Each round gets its own dice, so it replays the same no matter when it's played.
+def round_rng(run, round_nbr):
+    return random.Random(f"{run.rng_seed}:{round_nbr}")
+
 # A quest is open if its zone's chapter is no later than the player's.
 def zone_reached(current_zone_nbr, quest_zone_nbr):
     return zones()[quest_zone_nbr]["chapter_nbr"] <= zones()[current_zone_nbr]["chapter_nbr"]
@@ -38,12 +47,12 @@ def patron_rows(session, run, drafted_only=False):
 
 # New run with a pool of 5 patrons in rolled gear. The caller commits.
 def start_run(session, player_row, quest_nbr):
-    run = QuestRunRow(player_nbr=player_row.player_nbr, quest_nbr=quest_nbr)
+    run = QuestRunRow(player_nbr=player_row.player_nbr, quest_nbr=quest_nbr, rng_seed=new_seed())
     session.add(run)
     session.flush()  # assigns run.run_nbr
 
     pool = [cls(cls.name) for cls in Patron.classes]
-    roll_equipment(pool, equipment().values())
+    roll_equipment(pool, equipment().values(), round_rng(run, 0))  # round 0: the draft pool
     for slot, patron in enumerate(pool, start=1):
         session.add(QuestRunPatronRow(
             run_nbr=run.run_nbr, slot=slot, adventurer_class=type(patron).__name__,
@@ -79,8 +88,9 @@ def play_action(session, run, player_row, action, target_slot=None):
             raise ActionError(f"Slot {target_slot} isn't in the party.")
         target = by_slot[target_slot]
 
-    events = barmaid.act(action, patrons, monster, target)
-    for turn in combat.play_round(patrons, monster):
+    rng = round_rng(run, run.round_nbr)
+    events = barmaid.act(action, patrons, monster, target, rng)
+    for turn in combat.play_round(patrons, monster, rng):
         events += turn
 
     quest = quests()[run.quest_nbr]
@@ -92,7 +102,7 @@ def play_action(session, run, player_row, action, target_slot=None):
             events += combat.serve_course(run.course, monster)
         else:
             finish(run, "won")
-            events += combat.win_quest(barmaid, quest, zones())
+            events += combat.win_quest(barmaid, quest, zones(), rng)
     elif combat.party_defeated(patrons):
         finish(run, "lost")
         events += combat.lose_quest(barmaid)

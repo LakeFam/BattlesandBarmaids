@@ -24,6 +24,7 @@ The full proposal is in [docs/week1-report.txt](docs/week1-report.txt). One chan
 - Quest-run tables (`quest_runs` and `quest_run_patrons`) from the proposal, added as the first migration. They also store the monster's current attack and speed and each patron's current attack, because abilities change those mid-fight.
 - Migrations: `migrate.py` applies new files in `migrations/` on top of `schema.sql`, so schema changes no longer mean deleting the database.
 - Quest-run endpoints (listed below): start a quest, draft a party, take combat turns and abandon a run. `runs.py` loads a saved run as game objects, plays the round with the same rules as the terminal game, and saves it back in one transaction.
+- Seeded dice, as planned in the proposal. Each run stores an `rng_seed` (second migration), and each round's dice come from that seed and the round number. The same seed and the same actions replay the same fight, which the tests check. The terminal game still uses ordinary random dice.
 
 **Week 4**
 
@@ -158,8 +159,8 @@ The tests run against their own database, `battles_and_barmaids_test`. pytest re
 |---|---|
 | `tests/test_catalog_api.py` | Integration: the read-only catalog endpoints return the seed data, filter correctly, and send JSON errors |
 | `tests/test_players_api.py` | Integration: creating, reading and deleting saves, and buying ingredients, including rejected input |
-| `tests/test_combat.py` | Unit: weapon resistance, attack and armor math, barmaid actions (including rejected ones) and combat rounds. Also checks that the rules never load pygame. |
-| `tests/test_runs_api.py` | Integration: starting, drafting, playing, winning, losing and abandoning runs, including resent rounds and rejected actions |
+| `tests/test_combat.py` | Unit: weapon resistance, attack and armor math, barmaid actions (including rejected ones), combat rounds, and that a seeded round always plays the same. Also checks that the rules never load pygame. |
+| `tests/test_runs_api.py` | Integration: starting, drafting, playing, winning, losing and abandoning runs, including resent rounds, rejected actions, and replaying a fight from the same seed |
 | `tests/test_quest_runs_schema.py` | Integration: the quest-run tables' constraints (one unfinished run per player, consistent status, valid patron state) and that migrations only apply once |
 | `tests/test_health.py` | Integration: `/health` with the database up and unreachable |
 | `tests/test_app_helpers.py` | Unit: input validation helper in `app.py` |

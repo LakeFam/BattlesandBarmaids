@@ -9,11 +9,11 @@ INGREDIENTS = database.get_ingredients()
 def event(text, *sounds, flash=False):
     return {"text": text, "sounds": list(sounds), "flash": flash}
 
-# Death message if the monster just died.
-def monster_death_events(monster):
+# Death message if the monster is dead. rng is a random.Random, or the random module itself.
+def monster_death_events(monster, rng=random):
     if monster.is_alive():
         return []
-    return [event(random.choice(MONSTER_DEATH_MESSAGES).format(name=monster.name), "monster_death")]
+    return [event(rng.choice(MONSTER_DEATH_MESSAGES).format(name=monster.name), "monster_death")]
 
 POLISH_LABEL = "🧽 Polish Tumblers: Skip turn, scavenge +1 random ingredient."
 
@@ -52,9 +52,9 @@ class Player:
         return None
 
     # Applies one action and returns its events. target is only for abilities aimed at one patron.
-    def act(self, choice, patrons, monster, target=None):
+    def act(self, choice, patrons, monster, target=None, rng=random):
         if choice == self.polish_choice:
-            found = random.choice(list(INGREDIENTS))
+            found = rng.choice(list(INGREDIENTS))
             self.pantry[found] += 1
             return [event(f"🧽 You aggressively polish a copper mug on the cart and find 1x {found} hiding underneath!", "barmaid_polish")]
 
@@ -83,7 +83,10 @@ class Player:
             subject = monster
 
         self.deduct_supplies(ability["cost"])
+        monster_was_alive = monster.is_alive()
         events = ability["effect"](subject)
+        if monster_was_alive:
+            events += monster_death_events(monster, rng)
         if ability is self.special:
             self.barmaid_super_charge = 0
         else:
@@ -247,7 +250,7 @@ class Bunhilda(Player):
 
     def flaming_shot(self, monster):
         monster.hp -= 12
-        return [event(f"🔥 You hurl a flaming shot straight at {monster.name} for 12 damage!", "barmaid_fireshot")] + monster_death_events(monster)
+        return [event(f"🔥 You hurl a flaming shot straight at {monster.name} for 12 damage!", "barmaid_fireshot")]
 
     def ghost_pepperoni_slice(self, monster):
         monster.attack_power = max(1, monster.attack_power - 4)
@@ -259,7 +262,7 @@ class Bunhilda(Player):
 
     def holy_ham_grenade(self, monster):
         monster.hp -= 20
-        return [event("🍖 KABOOM! HOLY HAM GRENADE DETONATED FOR 20 DAMAGE! 🍖", "combat_grenade", "barmaid_special", flash=True)] + monster_death_events(monster)
+        return [event("🍖 KABOOM! HOLY HAM GRENADE DETONATED FOR 20 DAMAGE! 🍖", "combat_grenade", "barmaid_special", flash=True)]
 
 Player.classes = [Marigold, Saffron, Bunhilda]
 
@@ -331,7 +334,7 @@ class Warrior(Patron):
     def special_effect(self, monster, patrons):
         dmg = self.attack_power * 2
         monster.hp -= dmg
-        return [event(f"🥩 {self.name} uses MEAT-HOOK SMASH! Deals {dmg} massive damage to {monster.name}!")] + monster_death_events(monster)
+        return [event(f"🥩 {self.name} uses MEAT-HOOK SMASH! Deals {dmg} massive damage to {monster.name}!")]
 
 class Ranger(Patron):
     hp, speed, attack, aggro = 40, 7, 10, 4
@@ -346,7 +349,7 @@ class Ranger(Patron):
         dmg = self.attack_power
         monster.hp -= dmg
         monster.attack_power = max(1, monster.attack_power - 2)
-        return [event(f"🏹 {self.name} fires a SKEWERING TOOTHPICK! Deals {dmg} damage and saps the monster's Attack Flavor!")] + monster_death_events(monster)
+        return [event(f"🏹 {self.name} fires a SKEWERING TOOTHPICK! Deals {dmg} damage and saps the monster's Attack Flavor!")]
 
 class Rogue(Patron):
     hp, speed, attack, aggro = 30, 8, 14, 5
@@ -360,7 +363,7 @@ class Rogue(Patron):
     def special_effect(self, monster, patrons):
         dmg = self.attack_power + 15
         monster.hp -= dmg
-        return [event(f"🗡️ {self.name} executes a ZESTY BACKSTAB! Carves past armor for {dmg} vital damage!")] + monster_death_events(monster)
+        return [event(f"🗡️ {self.name} executes a ZESTY BACKSTAB! Carves past armor for {dmg} vital damage!")]
 
 class Mage(Patron):
     hp, speed, attack, aggro = 25, 5, 16, 4
@@ -375,17 +378,17 @@ class Mage(Patron):
         dmg = self.attack_power + 5
         monster.hp -= dmg
         monster.speed = max(1, monster.speed - 3)
-        return [event(f"❄️  {self.name} casts LIQUID NITROGEN BLAST! Deals {dmg} damage and flash-freezes the monster's speed!")] + monster_death_events(monster)
+        return [event(f"❄️  {self.name} casts LIQUID NITROGEN BLAST! Deals {dmg} damage and flash-freezes the monster's speed!")]
 
 Patron.classes = [Paladin, Warrior, Ranger, Rogue, Mage]
 
 # Random weapon and armor for each patron, from the equipment catalog's values.
-def roll_equipment(patrons, equipment):
+def roll_equipment(patrons, equipment, rng=random):
     weapon_choices = [item for item in equipment if item["type"] in ("weapon", "both")]
     armor_choices = [item for item in equipment if item["type"] in ("armor", "both")]
     for patron in patrons:
-        patron.weapon = random.choice(weapon_choices)
-        patron.armor = random.choice(armor_choices)
+        patron.weapon = rng.choice(weapon_choices)
+        patron.armor = rng.choice(armor_choices)
 
 class Monster(Character):
     attack_sound = "monster_attack"

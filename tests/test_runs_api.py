@@ -204,6 +204,25 @@ def test_losing_the_party_loses_the_quest(client):
     assert all(p["hp"] == 0 for p in run["patrons"] if p["is_drafted"])
     assert act(client, run_nbr, 4).status_code == 409
 
+# --- Seeded dice ---
+
+def play_seeded_run(client, monkeypatch, rounds=4):
+    monkeypatch.setattr(runs, "new_seed", lambda: 42)
+    run_nbr = start_and_draft(client)
+    gear = [(p["weapon"]["name"], p["armor"]["name"]) for p in client.get(f"/runs/{run_nbr}").json["patrons"]]
+
+    events = []
+    for _ in range(rounds):
+        response = act(client, run_nbr, 4)  # Polish Tumblers doesn't depend on the pantry
+        events.append(response.json["events"])
+        if response.json["run"]["status"] != "in_combat":
+            break
+    client.delete(f"/runs/{run_nbr}")
+    return gear, events
+
+def test_same_seed_replays_the_same_fight(client, monkeypatch):
+    assert play_seeded_run(client, monkeypatch) == play_seeded_run(client, monkeypatch)
+
 # --- Abandoning and history ---
 
 def test_abandoned_run_is_kept_and_frees_the_player(client):
