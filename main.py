@@ -10,8 +10,8 @@ import database
 import shop
 from audio import sounds
 from data import FLAGON_ART, TITLE_FLAVOR
-from entities import Monster, Patron, Player
-from terminal import clear_screen, flash_text, run_course
+from entities import Monster, Patron, Player, roll_equipment
+from terminal import clear_screen, flash_text, run_course, show_events
 
 QUESTS = database.get_quests()
 ZONES = database.get_zones()
@@ -20,20 +20,6 @@ EQUIPMENT = database.get_equipment()
 # True if lst has no duplicates.
 def is_unique(lst):
     return len(lst) == len(set(lst))
-
-# Random weapon and armor for each patron.
-def roll_equipment(bar_pool):
-    weapon_choices = []
-    armor_choices = []
-    for item in EQUIPMENT.values():
-        if item["type"] == "weapon" or item["type"] == "both":
-            weapon_choices.append(item)
-        if item["type"] == "armor" or item["type"] == "both":
-            armor_choices.append(item)
-
-    for patron in bar_pool:
-        patron.weapon = random.choice(weapon_choices)
-        patron.armor = random.choice(armor_choices)
 
 class GameEngine:
     def __init__(self):
@@ -65,8 +51,8 @@ class GameEngine:
         self.show_title_screen()
         quest_nbr = self.phase_1_hub()
         while quest_nbr is not None:
-            victory, drops = self.phase_2_dungeon(quest_nbr)
-            self.phase_3_resolution(victory, drops, quest_nbr)
+            victory = self.phase_2_dungeon(quest_nbr)
+            self.phase_3_resolution(victory, quest_nbr)
             quest_nbr = self.phase_1_hub()
 
     # Title screen
@@ -162,7 +148,7 @@ class GameEngine:
         bar_pool = []
         for cls in Patron.classes:
             bar_pool.append(cls(cls.name))
-        roll_equipment(bar_pool)
+        roll_equipment(bar_pool, EQUIPMENT.values())
 
         for i, c in enumerate(bar_pool, start=1):
             print(f"[{i}] {c.name} ({type(c).__name__}) - HP: {c.hp} | Atk: {c.attack_power} | Aggro: {c.aggro}")
@@ -218,50 +204,30 @@ class GameEngine:
         print(f"You descend into the tavern's damp dungeon tunnels to serve up {quest['name']}...")
         time.sleep(2)
         for course in range(1, 4):
-            enemy = quest['enemies'][course]
-            monster = Monster(
-                enemy['name'], hp=enemy['hp'], speed=enemy['speed'], attack=enemy['attack'], attack_emoji=enemy['emoji'],
-                resistant_damage_type=enemy['resistant_damage_type'], resistant_element=enemy['resistant_element'],
-            )
-            flash_text(f"🍽️  --- COURSE {course} OF 3: {monster.name} IS SERVED! --- 🍽️")
+            monster = Monster.from_enemy(quest['enemies'][course])
+            show_events(combat.serve_course(course, monster))
             time.sleep(1)
 
             if not run_course(course, patrons, monster, self.player):
-                return False, None
+                return False
 
-            print(f"\n✨ Course {course} cleared!")
+            print()
+            show_events(combat.clear_course(course, patrons))
             if course < 3:
-                print("You quickly toss a healing snack to your patrons as the next course arrives...")
-                combat.heal_between_courses(patrons)
-                sounds["next_course"].play()
                 time.sleep(2)
 
-        return True, quest['drops']
+        return True
 
     # Phase 3: rewards or penalties
-    def phase_3_resolution(self, victory, drops, quest_nbr):
+    def phase_3_resolution(self, victory, quest_nbr):
         sounds["quest_combat"].fadeout(6000)
         print("\n" + "="*50)
         print("=== LAST CALL! SETTLE THE TAB ===")
         print("="*50)
         if victory:
-            sounds["quest_victory"].play()
-            sounds["barmaid_victory"].play()
-            reward_gold = random.randint(30, 60)
-            self.player.gold += reward_gold
-            flash_text("🎉 ALL 3 COURSES CLEARED! THE MEAL ENDS IN VICTORY! 🎉")
-            print(f"Collected {reward_gold} Gold tips into the till!")
-            print("Ingredients Harvested for the Pantry:")
-            for item, amount in drops.items():
-                self.player.pantry[item] += amount
-                print(f"+ {amount}x {item}")
-            if QUESTS[quest_nbr]["is_boss"]:
-                self.advance_zone()
+            show_events(combat.win_quest(self.player, QUESTS[quest_nbr], ZONES))
         else:
-            sounds["quest_failed"].play()
-            flash_text("💀 KITCHEN DISASTER! YOUR PARTY WAS OVERWHELMED! 💀")
-            print("Your party couldn't stomach all three courses!")
-            self.player.gold = max(0, self.player.gold - 15)
+            show_events(combat.lose_quest(self.player))
         # Return-to-tavern ambience
         print("\nDragging the kitchen-cart back to the Tavern Hub...")
         sounds["cart_return"].play()
@@ -270,24 +236,6 @@ class GameEngine:
         sounds["tavern_music"].play(loops=-1)
         time.sleep(3)
         database.save_player(self.player)
-
-    # After a boss: move to the next chapter's zone.
-    def advance_zone(self):
-        current_chapter = ZONES[self.player.current_zone_nbr]["chapter_nbr"]
-        next_zone_nbr = None
-        next_chapter = None
-        for zone_nbr, zone in ZONES.items():
-            if zone["chapter_nbr"] > current_chapter:
-                if next_chapter is None or zone["chapter_nbr"] < next_chapter:
-                    next_chapter = zone["chapter_nbr"]
-                    next_zone_nbr = zone_nbr
-
-        if next_zone_nbr is None:
-            flash_text("🏆 There are no further regions to conquer... yet!")
-            return
-
-        self.player.current_zone_nbr = next_zone_nbr
-        flash_text(f"🗺️  The road now leads onward to {ZONES[next_zone_nbr]['name']}!")
 
 if __name__ == "__main__":
     time.sleep(.1)  # cleaner audio start

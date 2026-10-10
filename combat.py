@@ -97,3 +97,54 @@ def heal_between_courses(patrons):
     for p in patrons:
         if p.is_alive():
             p.hp = min(p.max_hp, p.hp + 7)
+
+def serve_course(course, monster):
+    return [event(f"🍽️  --- COURSE {course} OF 3: {monster.name} IS SERVED! --- 🍽️", flash=True)]
+
+# After a course's monster dies; heals the party if another course follows.
+def clear_course(course, patrons):
+    events = [event(f"✨ Course {course} cleared!")]
+    if course < 3:
+        heal_between_courses(patrons)
+        events.append(event("You quickly toss a healing snack to your patrons as the next course arrives...", "next_course"))
+    return events
+
+# Gold tips, the quest's drops, and the next zone after a boss.
+def win_quest(player, quest, zones):
+    reward_gold = random.randint(30, 60)
+    player.gold += reward_gold
+    events = [
+        event("🎉 ALL 3 COURSES CLEARED! THE MEAL ENDS IN VICTORY! 🎉", "quest_victory", "barmaid_victory", flash=True),
+        event(f"Collected {reward_gold} Gold tips into the till!"),
+        event("Ingredients Harvested for the Pantry:"),
+    ]
+    for item, amount in quest["drops"].items():
+        player.pantry[item] += amount
+        events.append(event(f"+ {amount}x {item}"))
+    if quest["is_boss"]:
+        events += advance_zone(player, zones)
+    return events
+
+def lose_quest(player):
+    player.gold = max(0, player.gold - 15)
+    return [
+        event("💀 KITCHEN DISASTER! YOUR PARTY WAS OVERWHELMED! 💀", "quest_failed", flash=True),
+        event("Your party couldn't stomach all three courses!"),
+    ]
+
+# Moves the player to the first zone of the next chapter, if there is one.
+def advance_zone(player, zones):
+    current_chapter = zones[player.current_zone_nbr]["chapter_nbr"]
+    next_zone_nbr = None
+    next_chapter = None
+    for zone_nbr, zone in zones.items():
+        if zone["chapter_nbr"] > current_chapter:
+            if next_chapter is None or zone["chapter_nbr"] < next_chapter:
+                next_chapter = zone["chapter_nbr"]
+                next_zone_nbr = zone_nbr
+
+    if next_zone_nbr is None:
+        return [event("🏆 There are no further regions to conquer... yet!", flash=True)]
+
+    player.current_zone_nbr = next_zone_nbr
+    return [event(f"🗺️  The road now leads onward to {zones[next_zone_nbr]['name']}!", flash=True)]

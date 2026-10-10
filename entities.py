@@ -15,6 +15,8 @@ def monster_death_events(monster):
         return []
     return [event(random.choice(MONSTER_DEATH_MESSAGES).format(name=monster.name), "monster_death")]
 
+POLISH_LABEL = "🧽 Polish Tumblers: Skip turn, scavenge +1 random ingredient."
+
 def cost_text(cost):
     return ", ".join(f"{amt}x {name}" for name, amt in cost.items())
 
@@ -63,7 +65,7 @@ class Player:
                 raise ActionError("❌ Requires 100% Super Charge!", "barmaid_fail")
             ability = self.special
         else:
-            raise ActionError("Invalid choice.")
+            raise ActionError(f"Invalid choice. Choose an action from 1 to {self.special_choice}.")
 
         if not self.check_supplies(ability["cost"]):
             raise ActionError(f"❌ Missing ingredients! Need: {cost_text(ability['cost'])}")
@@ -377,6 +379,14 @@ class Mage(Patron):
 
 Patron.classes = [Paladin, Warrior, Ranger, Rogue, Mage]
 
+# Random weapon and armor for each patron, from the equipment catalog's values.
+def roll_equipment(patrons, equipment):
+    weapon_choices = [item for item in equipment if item["type"] in ("weapon", "both")]
+    armor_choices = [item for item in equipment if item["type"] in ("armor", "both")]
+    for patron in patrons:
+        patron.weapon = random.choice(weapon_choices)
+        patron.armor = random.choice(armor_choices)
+
 class Monster(Character):
     attack_sound = "monster_attack"
     flavor_text = MONSTER_FLAVOR
@@ -387,3 +397,11 @@ class Monster(Character):
         self.attack_emoji = attack_emoji
         self.resistant_damage_type = resistant_damage_type
         self.resistant_element = resistant_element
+
+    # From one course of database.get_quests()'s "enemies".
+    @classmethod
+    def from_enemy(cls, enemy):
+        return cls(
+            enemy["name"], hp=enemy["hp"], speed=enemy["speed"], attack=enemy["attack"], attack_emoji=enemy["emoji"],
+            resistant_damage_type=enemy["resistant_damage_type"], resistant_element=enemy["resistant_element"],
+        )

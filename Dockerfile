@@ -9,8 +9,8 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# API only; the terminal game runs on the host.
-COPY app.py database.py migrate.py ./
+# API and the game rules it plays; the terminal client runs on the host.
+COPY app.py database.py migrate.py runs.py entities.py combat.py data.py ./
 COPY migrations/ migrations/
 
 RUN useradd --create-home appuser

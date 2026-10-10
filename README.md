@@ -21,10 +21,10 @@ The full proposal is in [docs/week1-report.txt](docs/week1-report.txt). One chan
 - Combat rules separated from the terminal code. `entities.py` and `combat.py` return an event log (text plus sound names) and raise `ActionError` for invalid barmaid actions, instead of calling `print()`, `input()` or pygame. `terminal.py` prints and plays the events, and only `audio.py` loads pygame.
 - Quest-run tables (`quest_runs` and `quest_run_patrons`) from the proposal, added as the first migration. They also store the monster's current attack and speed and each patron's current attack, because abilities change those mid-fight.
 - Migrations: `migrate.py` applies new files in `migrations/` on top of `schema.sql`, so schema changes no longer mean deleting the database.
+- Quest-run endpoints (listed below): start a quest, draft a party, take combat turns and abandon a run. `runs.py` loads a saved run as game objects, plays the round with the same rules as the terminal game, and saves it back in one transaction.
 
 **Next**
 
-- Quest-run endpoints (start a quest, draft a party, take combat turns) that call the combat rules directly and keep a run's state in the quest-run tables.
 - Week 4: deploy to a cloud provider and/or add a GitHub Actions workflow that builds and tests the app.
 
 ## Running it with Docker
@@ -88,16 +88,35 @@ There's no login. Each barmaid has one save, shared with the terminal game.
 | POST | `/players/<barmaid_class>/purchases` | Buy ingredients. Body: `{"item_nbr": 3, "quantity": 2}`. Returns `422` if the player can't afford it. |
 | GET | `/players/<barmaid_class>/adventurers` | Level and gear for each of the 5 adventurer classes |
 
-### Planned: quest runs
+### Quest runs
+
+A run is one attempt at a quest, saved between requests. Each barmaid can have one unfinished run at a time.
 
 | Method | Path | Description |
 |---|---|---|
-| POST | `/players/<barmaid_class>/runs` | Start a quest |
-| GET | `/players/<barmaid_class>/runs` | Run history |
-| GET | `/runs/<run_nbr>` | Current state of a run |
-| POST | `/runs/<run_nbr>/party` | Draft 3 of the 5 patrons |
-| POST | `/runs/<run_nbr>/actions` | Take the barmaid's turn. The server resolves the rest of the round. |
-| DELETE | `/runs/<run_nbr>` | Abandon the run |
+| POST | `/players/<barmaid_class>/runs` | Start a quest. Body: `{"quest_nbr": 1}`. Rolls random gear for a pool of 5 patrons and returns the run with status `drafting`. Returns `409` if the barmaid already has an unfinished run, and `422` if the quest's zone isn't reached yet. |
+| GET | `/players/<barmaid_class>/runs` | Run history, newest first. Optional `?status=drafting\|in_combat\|won\|lost\|abandoned` |
+| GET | `/runs/<run_nbr>` | The run's state: status, course, round, monster, patrons, and the barmaid's gold, super charge, pantry and numbered actions |
+| POST | `/runs/<run_nbr>/party` | Draft the party. Body: `{"picks": [1, 3, 4]}`, 3 different slots from 1 to 5. Serves the first course. |
+| POST | `/runs/<run_nbr>/actions` | Take the barmaid's turn. Body: `{"round_nbr": 1, "action": 3, "target_slot": 2}`. `action` is 1-3 for abilities, 4 to polish tumblers, 5 for the super ability. `target_slot` is only needed for abilities that serve one patron. The server plays the rest of the round, serves the next course or ends the quest, and returns the round's `events` and the new `run`. Returns `409` if `round_nbr` isn't the current round (so a resent request can't act twice), and `422` for an invalid action, missing ingredients or an uncharged super ability. |
+| DELETE | `/runs/<run_nbr>` | Abandon the run. It's kept with status `abandoned`. Returns `204`. |
+
+Each event is `{"text": ..., "sounds": [...], "flash": true/false}`. The sound names and the flash flag are what the terminal game uses to play them, so a client can ignore them or do the same.
+
+A quest from start to finish:
+
+```bash
+curl -X POST http://localhost:5000/players/Bunhilda/runs \
+     -H "Content-Type: application/json" -d '{"quest_nbr": 1}'
+# -> {"run_nbr": 1, "status": "drafting", "patrons": [...], ...}
+
+curl -X POST http://localhost:5000/runs/1/party \
+     -H "Content-Type: application/json" -d '{"picks": [1, 2, 4]}'
+
+curl -X POST http://localhost:5000/runs/1/actions \
+     -H "Content-Type: application/json" -d '{"round_nbr": 1, "action": 1}'
+# Repeat with the run's next round_nbr until its status is "won" or "lost".
+```
 
 ## Playing the terminal version
 
@@ -131,6 +150,7 @@ The tests run against their own database, `battles_and_barmaids_test`. pytest re
 | `tests/test_catalog_api.py` | Integration: the read-only catalog endpoints return the seed data, filter correctly, and send JSON errors |
 | `tests/test_players_api.py` | Integration: creating, reading and deleting saves, and buying ingredients, including rejected input |
 | `tests/test_combat.py` | Unit: weapon resistance, attack and armor math, barmaid actions (including rejected ones) and combat rounds. Also checks that the rules never load pygame. |
+| `tests/test_runs_api.py` | Integration: starting, drafting, playing, winning, losing and abandoning runs, including resent rounds and rejected actions |
 | `tests/test_quest_runs_schema.py` | Integration: the quest-run tables' constraints (one unfinished run per player, consistent status, valid patron state) and that migrations only apply once |
 | `tests/test_app_helpers.py` | Unit: input validation helper in `app.py` |
 | `tests/conftest.py` | Shared setup: builds the test database from `schema.sql` plus migrations, and provides the `app` fixture that pytest-flask's `client` fixture uses |
@@ -140,6 +160,7 @@ The tests run against their own database, `battles_and_barmaids_test`. pytest re
 | File | Purpose |
 |---|---|
 | `app.py` | Flask API |
+| `runs.py` | Quest runs for the API: loads, plays and saves a run using the game rules |
 | `database.py` | SQLAlchemy models and the database connection, shared by the API and the terminal game |
 | `schema.sql` | Starting table definitions and seed data |
 | `migrations/`, `migrate.py` | Schema changes since `schema.sql`, and the script that applies them |

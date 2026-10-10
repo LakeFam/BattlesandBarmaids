@@ -204,7 +204,7 @@ def get_zones():
         }
     return zones
 
-# {equipment_nbr: {name, type, tier, rarity, damage_type, element, power, cost}}
+# {equipment_nbr: {equipment_nbr, name, type, tier, rarity, damage_type, element, power, cost}}
 def get_equipment():
     with Session(engine) as session:
         rows = session.execute(select(EquipmentRow).order_by(EquipmentRow.equipment_nbr)).scalars().all()
@@ -212,6 +212,7 @@ def get_equipment():
     equipment = {}
     for item in rows:
         equipment[item.equipment_nbr] = {
+            "equipment_nbr": item.equipment_nbr,
             "name": item.name,
             "type": item.type,
             "tier": item.tier,
@@ -223,7 +224,19 @@ def get_equipment():
         }
     return equipment
 
-# Save as {gold, barmaid_super_charge, current_zone_nbr, pantry}, or None. New items appear at 0.
+# {"emoji name": qty} in item order. New items appear at 0.
+def load_pantry(session, player_nbr):
+    rows = session.execute(
+        select(ItemRow.emoji, ItemRow.name, PlayerInventoryRow.quantity)
+        .outerjoin(PlayerInventoryRow, and_(
+            PlayerInventoryRow.item_nbr == ItemRow.item_nbr,
+            PlayerInventoryRow.player_nbr == player_nbr,
+        ))
+        .order_by(ItemRow.item_nbr)
+    ).all()
+    return {f"{emoji} {name}": qty or 0 for emoji, name, qty in rows}
+
+# Save as {gold, barmaid_super_charge, current_zone_nbr, pantry}, or None.
 def get_player(barmaid_class):
     with Session(engine) as session:
         player = session.execute(
@@ -232,30 +245,38 @@ def get_player(barmaid_class):
         if player is None:
             return None
 
-        rows = session.execute(
-            select(ItemRow.emoji, ItemRow.name, PlayerInventoryRow.quantity)
-            .outerjoin(PlayerInventoryRow, and_(
-                PlayerInventoryRow.item_nbr == ItemRow.item_nbr,
-                PlayerInventoryRow.player_nbr == player.player_nbr,
-            ))
-            .order_by(ItemRow.item_nbr)
-        ).all()
-
-        pantry = {}
-        for emoji, name, qty in rows:
-            pantry[f"{emoji} {name}"] = qty or 0
-
         return {
             "gold": player.gold,
             "barmaid_super_charge": player.barmaid_super_charge,
             "current_zone_nbr": player.current_zone_nbr,
-            "pantry": pantry,
+            "pantry": load_pantry(session, player.player_nbr),
         }
 
 # {"emoji name": item_nbr}
 def get_item_nbrs(session):
     rows = session.execute(select(ItemRow.item_nbr, ItemRow.emoji, ItemRow.name)).all()
     return {f"{emoji} {name}": item_nbr for item_nbr, emoji, name in rows}
+
+# Copies an entities.Player's progress onto its PlayerRow and inventory. The caller commits.
+def store_player(session, row, player):
+    row.gold = player.gold
+    row.barmaid_super_charge = player.barmaid_super_charge
+    row.current_zone_nbr = player.current_zone_nbr
+
+    item_nbrs = get_item_nbrs(session)
+    inventory = {
+        inv.item_nbr: inv
+        for inv in session.execute(
+            select(PlayerInventoryRow).where(PlayerInventoryRow.player_nbr == row.player_nbr)
+        ).scalars()
+    }
+    for item, qty in player.pantry.items():
+        item_nbr = item_nbrs[item]
+        # Item added since this player last saved.
+        if item_nbr not in inventory:
+            session.add(PlayerInventoryRow(player_nbr=row.player_nbr, item_nbr=item_nbr, quantity=qty))
+        else:
+            inventory[item_nbr].quantity = qty
 
 # Inserts a new save.
 def create_player(player):
@@ -268,11 +289,7 @@ def create_player(player):
         )
         session.add(row)
         session.flush()  # assigns row.player_nbr
-
-        item_nbrs = get_item_nbrs(session)
-        for item, qty in player.pantry.items():
-            session.add(PlayerInventoryRow(player_nbr=row.player_nbr, item_nbr=item_nbrs[item], quantity=qty))
-
+        store_player(session, row, player)
         session.commit()
 
 # Updates an existing save.
@@ -281,23 +298,5 @@ def save_player(player):
         row = session.execute(
             select(PlayerRow).where(PlayerRow.barmaid_class == player.barmaid_class)
         ).scalar_one()
-        row.gold = player.gold
-        row.barmaid_super_charge = player.barmaid_super_charge
-        row.current_zone_nbr = player.current_zone_nbr
-
-        item_nbrs = get_item_nbrs(session)
-        inventory = {
-            inv.item_nbr: inv
-            for inv in session.execute(
-                select(PlayerInventoryRow).where(PlayerInventoryRow.player_nbr == row.player_nbr)
-            ).scalars()
-        }
-        for item, qty in player.pantry.items():
-            item_nbr = item_nbrs[item]
-            # Item added since this player last saved.
-            if item_nbr not in inventory:
-                session.add(PlayerInventoryRow(player_nbr=row.player_nbr, item_nbr=item_nbr, quantity=qty))
-            else:
-                inventory[item_nbr].quantity = qty
-
+        store_player(session, row, player)
         session.commit()

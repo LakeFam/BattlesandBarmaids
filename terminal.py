@@ -4,7 +4,7 @@ import time
 
 import combat
 from audio import sounds
-from entities import ActionError, cost_text
+from entities import POLISH_LABEL, ActionError, cost_text
 
 # Simple way to clear the screen
 def clear_screen():
@@ -66,7 +66,7 @@ def barmaid_turn(player, patrons, monster):
         print()
         for i, ability in enumerate(player.abilities, start=1):
             print(f"{i}. {ability['label']} (Cost: {cost_text(ability['cost'])})")
-        print(f"{player.polish_choice}. 🧽 Polish Tumblers: Skip turn, scavenge +1 random ingredient.")
+        print(f"{player.polish_choice}. {POLISH_LABEL}")
         if player.barmaid_super_charge >= 100:
             print(f"{player.special_choice}. {player.special['label']} (Cost: {cost_text(player.special['cost'])})")
         else:

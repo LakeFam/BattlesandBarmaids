@@ -5,11 +5,13 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from werkzeug.exceptions import HTTPException
 
+import runs
 from database import (
     ADVENTURER_CLASSES, BARMAID_CLASSES, STARTING_GOLD, STARTING_PANTRY_QTY,
     ChapterRow, EquipmentRow, ItemRow, MonsterRow, PlayerAdventurerRow,
-    PlayerInventoryRow, PlayerRow, QuestDropRow, QuestRow, ZoneRow, engine,
+    PlayerInventoryRow, PlayerRow, QuestDropRow, QuestRow, QuestRunRow, ZoneRow, engine,
 )
+from entities import POLISH_LABEL, ActionError
 
 app = Flask(__name__)
 app.json.sort_keys = False    # keep field order
@@ -61,6 +63,12 @@ def get_player_or_404(session, barmaid_class, lock=False):
     if player is None:
         abort(404, f"No save found for {barmaid_class}.")
     return player
+
+def get_run_or_404(session, run_nbr, lock=False):
+    run = session.get(QuestRunRow, run_nbr, with_for_update=lock)
+    if run is None:
+        abort(404, f"Run {run_nbr} not found.")
+    return run
 
 # --- JSON shapes ---
 
@@ -335,3 +343,186 @@ def get_adventurers(barmaid_class):
                 "armor": gear(row.armor_nbr) if row else None,
             })
         return jsonify(adventurers)
+
+# --- Quest runs ---
+
+def iso(timestamp):
+    return timestamp.isoformat() if timestamp else None
+
+def cost_json(cost):
+    return [{"item": item, "quantity": qty} for item, qty in cost.items()]
+
+# The barmaid's numbered actions for POST /runs/<run_nbr>/actions.
+def barmaid_actions_json(player):
+    barmaid = runs.BARMAID_CLASSES[player.barmaid_class]()
+    actions = [
+        {"action": i, "label": a["label"], "target": a["target"], "cost": cost_json(a["cost"])}
+        for i, a in enumerate(barmaid.abilities, start=1)
+    ]
+    actions.append({"action": barmaid.polish_choice, "label": POLISH_LABEL, "target": None, "cost": []})
+    actions.append({
+        "action": barmaid.special_choice, "label": barmaid.special["label"], "target": barmaid.special["target"],
+        "cost": cost_json(barmaid.special["cost"]), "requires_full_charge": True,
+    })
+    return actions
+
+def run_patron_json(row):
+    return {
+        "slot": row.slot,
+        "adventurer_class": row.adventurer_class,
+        "name": runs.PATRON_CLASSES[row.adventurer_class].name,
+        "is_drafted": row.is_drafted,
+        "hp": row.hp,
+        "max_hp": row.max_hp,
+        "attack_power": row.attack_power,
+        "power_meter": row.power_meter,
+        "defense_buff": row.defense_buff,
+        "ignore_def": row.ignore_def,
+        "weapon": runs.equipment().get(row.weapon_nbr),
+        "armor": runs.equipment().get(row.armor_nbr),
+    }
+
+def run_summary_json(run):
+    return {
+        "run_nbr": run.run_nbr,
+        "quest_nbr": run.quest_nbr,
+        "quest_name": runs.quests()[run.quest_nbr]["name"],
+        "status": run.status,
+        "course": run.course,
+        "round_nbr": run.round_nbr,
+        "started_at": iso(run.started_at),
+        "ended_at": iso(run.ended_at),
+    }
+
+def run_json(session, run):
+    player = session.get(PlayerRow, run.player_nbr)
+    monster = None
+    if run.monster_hp is not None:
+        enemy = runs.quests()[run.quest_nbr]["enemies"][run.course]
+        monster = {
+            "course": run.course,
+            "name": enemy["name"],
+            "emoji": enemy["emoji"],
+            "hp": run.monster_hp,
+            "max_hp": enemy["hp"],
+            "attack": run.monster_attack,
+            "speed": run.monster_speed,
+        }
+    return {
+        **run_summary_json(run),
+        "barmaid_class": player.barmaid_class,
+        "monster": monster,
+        "patrons": [run_patron_json(row) for row in runs.patron_rows(session, run)],
+        "barmaid": {
+            "gold": player.gold,
+            "super_charge": player.barmaid_super_charge,
+            "pantry": inventory_json(session, player),
+            "actions": barmaid_actions_json(player),
+        },
+    }
+
+@app.post("/players/<barmaid_class>/runs")
+def start_run(barmaid_class):
+    quest_nbr = json_body().get("quest_nbr")
+    if not is_positive_int(quest_nbr):
+        abort(422, "quest_nbr must be a positive whole number.")
+
+    with Session(engine) as session:
+        player = get_player_or_404(session, barmaid_class, lock=True)
+        quest = runs.quests().get(quest_nbr)
+        if quest is None:
+            abort(404, f"Quest {quest_nbr} not found.")
+        if not runs.zone_reached(player.current_zone_nbr, quest["zone_nbr"]):
+            abort(422, f"{barmaid_class} hasn't reached quest {quest_nbr}'s zone yet.")
+        open_run = session.execute(
+            select(QuestRunRow)
+            .where(QuestRunRow.player_nbr == player.player_nbr, QuestRunRow.status.in_(runs.OPEN_STATUSES))
+        ).scalar_one_or_none()
+        if open_run is not None:
+            abort(409, f"{barmaid_class} already has an unfinished run ({open_run.run_nbr}).")
+
+        run = runs.start_run(session, player, quest_nbr)
+        session.commit()
+
+        response = jsonify(run_json(session, run))
+        response.status_code = 201
+        response.headers["Location"] = url_for("get_run", run_nbr=run.run_nbr)
+        return response
+
+# Newest first. Optional ?status=
+@app.get("/players/<barmaid_class>/runs")
+def list_runs(barmaid_class):
+    status = query_choice("status", runs.RUN_STATUSES)
+    with Session(engine) as session:
+        player = get_player_or_404(session, barmaid_class)
+        query = (
+            select(QuestRunRow)
+            .where(QuestRunRow.player_nbr == player.player_nbr)
+            .order_by(QuestRunRow.run_nbr.desc())
+        )
+        if status is not None:
+            query = query.where(QuestRunRow.status == status)
+        return jsonify([run_summary_json(r) for r in session.execute(query).scalars()])
+
+@app.get("/runs/<int:run_nbr>")
+def get_run(run_nbr):
+    with Session(engine) as session:
+        return jsonify(run_json(session, get_run_or_404(session, run_nbr)))
+
+@app.post("/runs/<int:run_nbr>/party")
+def draft_party(run_nbr):
+    picks = json_body().get("picks")
+    valid = (
+        isinstance(picks, list) and len(picks) == 3 and len(set(picks)) == 3
+        and all(is_positive_int(p) and p <= 5 for p in picks)
+    )
+    if not valid:
+        abort(422, "picks must be 3 different slots from 1 to 5.")
+
+    with Session(engine) as session:
+        run = get_run_or_404(session, run_nbr, lock=True)
+        if run.status != "drafting":
+            abort(409, f"Run {run_nbr} is {run.status}, not drafting.")
+        events = runs.draft_party(session, run, picks)
+        session.commit()
+        return jsonify({"events": events, "run": run_json(session, run)})
+
+@app.post("/runs/<int:run_nbr>/actions")
+def take_action(run_nbr):
+    body = json_body()
+    round_nbr = body.get("round_nbr")
+    action = body.get("action")
+    target_slot = body.get("target_slot")
+    if not is_positive_int(round_nbr):
+        abort(422, "round_nbr must be a positive whole number.")
+    if not is_positive_int(action):
+        abort(422, "action must be a positive whole number.")
+    if target_slot is not None and not is_positive_int(target_slot):
+        abort(422, "target_slot must be a positive whole number.")
+
+    with Session(engine) as session:
+        # Lock order run, then player.
+        run = get_run_or_404(session, run_nbr, lock=True)
+        if run.status != "in_combat":
+            abort(409, f"Run {run_nbr} is {run.status}, not in combat.")
+        if round_nbr != run.round_nbr:
+            abort(409, f"Run {run_nbr} is on round {run.round_nbr}, not {round_nbr}.")
+
+        player = session.get(PlayerRow, run.player_nbr, with_for_update=True)
+        try:
+            events = runs.play_action(session, run, player, action, target_slot)
+        except ActionError as err:
+            abort(422, str(err).removeprefix("❌ "))
+        session.commit()
+        return jsonify({"events": events, "run": run_json(session, run)})
+
+# Kept as "abandoned" for history.
+@app.delete("/runs/<int:run_nbr>")
+def abandon_run(run_nbr):
+    with Session(engine) as session:
+        run = get_run_or_404(session, run_nbr, lock=True)
+        if run.status not in runs.OPEN_STATUSES:
+            abort(409, f"Run {run_nbr} is already {run.status}.")
+        runs.finish(run, "abandoned")
+        session.commit()
+    return "", 204
