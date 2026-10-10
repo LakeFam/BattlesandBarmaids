@@ -5,7 +5,7 @@ The full story of Bran and the culinary resistance, planned as a future game. *B
 ## Open questions
 
 - **Bran and the barmaids:** how do Marigold, Saffron and Bunhilda connect to Bran's story? Do they appear in the future game?
-- **This game's chapters:** `schema.sql` seeds the six chapters below, Bran-centric descriptions included, as this game's `chapters` table. Only Chapter 1 has quests. Should this game get its own chapter descriptions?
+- **This game's chapters:** resolved. `schema.sql` seeds barmaid-campaign copy from `NARRATIVE.md`. The Bran-centric arc below remains the future game's plot. Only Chapter 1 has quests in this game.
 - **The Brigade:** the game's patrons include Grimble (Warrior) and Faelen (Rogue). Are Thorne and Sir Flour additional patrons, or earlier versions of those two?
 - **Unit Micro-90:** in the bar pool from the start of the game. The story unlocks him in the Chapter 2 bounty and recruits him again in Chapter 3.
 - **Princess Red:** the Quest Log puts her battle at the end of Chapter 2. The Narrative Arc puts it in Chapter 4.

@@ -7,7 +7,7 @@ CREATE TABLE items (
     cost INTEGER NOT NULL CHECK (cost >= 0)
 );
 
--- Story chapters (docs/story-plans.md)
+-- Story chapters for this game (NARRATIVE.md). The Bran arc stays in docs/story-plans.md.
 CREATE TABLE chapters (
     chapter_nbr INTEGER PRIMARY KEY,
     name TEXT NOT NULL,
@@ -105,12 +105,12 @@ INSERT INTO items (name, emoji, cost) VALUES
     ('Ghost Pepperoni', '🍕', 20);
 
 INSERT INTO chapters (chapter_nbr, name, description) VALUES
-(1, 'The Awakening (Prologue)', 'The Corporate Wall is still a distant rumor, but local wildlife is becoming corrupted by synthetic runoff. Master Levain''s starter is failing. Bran ventures into the forbidden spore caves, encountering the Great Boar. After slaying the beast, she harvests the Wild Cave Spores, creating a volatile, powerful new Sourdough Starter. The village is saved, but the vanguard of the Corporate Wall is spotted on the horizon. Bran retrofits a cart into a mobile kitchen and leaves home to meet the threat head-on.'),
-(2, 'The Roadside Inn & The Taplands', 'Bran establishes a foothold at a local Taplands tavern. Here, she recruits the Brigade. The plot focuses on liberating local farms from Syndicate buyouts and fighting off waves of processed monsters. The chapter concludes with a fierce "Cook-Off Duel" against Hans von Pretzel, the stubborn Taplands Brewmaster, earning his respect and recruiting him to the Command rather than defeating him as a foe.'),
-(3, 'The City of Circuits', 'To upgrade her mobile cart''s heating elements and armor, Bran leads the brigade into the Eastern Dunes. They navigate the ruins of consumerism and recruit Unit Micro-90. The Syndicate ambushes them, led by Shift Supervisor Drake. Bran must out-cook and out-fight Drake''s "efficiency algorithms" using unpredictable, wild fermentation techniques that fry the Syndicate''s sensors.'),
-(4, 'The Crashed Titan Sanctuary', 'The Corporate Wall accelerates its march, threatening to swallow the Taplands entirely. Bran seeks out the Crashed Titan in the Lake Crater, hoping to use its geothermal core as the ultimate oven. They are intercepted by Princess Red. A massive, emotional duel ensues between the two princesses (Blue and Red) and the two culinary philosophies.'),
-(5, 'Breaking the Wall (The Climax)', 'Using the geothermal energy of the Titan, Bran bakes the Grand Feast of the Taplands, a meal so overflowing with Zest and vitality that it creates a shockwave of pure flavor. The Brigade charges the Corporate Wall, fighting through the sterile cafeterias and boardrooms. In the final confrontation against the Board of Directors (a monolithic AI entity made of ledgers and deep-fryer grease), Bran must prove that chaotic, loving craftsmanship will always overpower soulless optimization.'),
-(6, 'A New Vintage (Epilogue)', 'The Wall crumbles, leaving behind fertile soil mixed with steel ruins. The Taplands are safe. Bran''s mobile cart becomes a legendary fixture of the roads, traveling from town to town, teaching the next generation how to keep the wild yeast alive.');
+(1, 'The Village of the Hearth', 'The Corporate Wall is still a distant rumor, but local wildlife is turning strange on synthetic runoff. The barmaid''s first nights at The Flaming Flagon are spent clearing what has crawled into the village: cellar rats, a larder raid, and The Baconnator, the village''s Great Boar. She drafts three patrons, fights three courses at a time from the kitchen-cart, and opens the road to the Taplands if the boar goes down.'),
+(2, 'The Taplands', 'The last frontier of authentic cooking: amber barley fields, copper fermenting vats, and roadside inns that still serve slow food. From The Copper Vat Tavern the barmaid stocks wild fermentation into the cart and holds the line as franchise-slop creeps in from the east.'),
+(3, 'City of Circuits', 'A fallen commercial monolith half-buried in the Eastern Dunes. Defunct neon and pre-decline electronics wait to be salvaged into supper. The Neon Skillet is home base for retro diner cooking while the cart forages the ruins.'),
+(4, 'The Crashed Titan Sanctuary', 'A colossal alien war-machine lies in a flooded lake crater. Its geothermal heart could become the resistance''s greatest oven. The Geothermal Galley serves deep-crater feasts while the Corporate Wall accelerates its westward march.'),
+(5, 'The Corporate Wall', 'A grey-and-neon border of moving mega-fortresses, ingesting farms and taverns and extruding sterile franchise chains. If the cart reaches The Liberated Cafeteria, the fight leaves cellars behind and charges into reclaimed slop.'),
+(6, 'A New Vintage', 'If the Wall ever crumbles, it will leave fertile soil mixed with steel. The Taplands stay wild. The kitchen-cart keeps to the roads, one tavern at a time, teaching the next generation how to keep the wild yeast alive.');
 
 INSERT INTO zones (chapter_nbr, name, description, tavern_name, culinary_theme) VALUES
 (1, 'The Village of the Hearth', 'The prologue setting. A quiet, rustic village anchored by Master Levain''s ancient wood-fired stone oven. It is the birthplace of the protagonist''s culinary journey.', 'The Flaming Flagon', 'Rustic Hearth Cooking'),

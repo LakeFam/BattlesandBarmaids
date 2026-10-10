@@ -1,6 +1,20 @@
 # Catalog endpoints, against the schema.sql seed data.
 import pytest
 
+def test_chapters_follow_the_campaign_map(client):
+    response = client.get("/chapters")
+
+    assert response.status_code == 200
+    assert [chapter["name"] for chapter in response.json] == [
+        "The Village of the Hearth",
+        "The Taplands",
+        "City of Circuits",
+        "The Crashed Titan Sanctuary",
+        "The Corporate Wall",
+        "A New Vintage",
+    ]
+    assert all("Bran" not in chapter["description"] for chapter in response.json)
+
 def test_items_lists_seeded_ingredients(client):
     response = client.get("/items")
 
