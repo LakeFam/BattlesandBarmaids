@@ -90,6 +90,7 @@ class Player:
                     return
             # Scavenge +1 random ingredient.
             elif choice == '4':
+                sounds["barmaid_polish"].play()
                 found = random.choice(list(INGREDIENTS))
                 self.pantry[found] += 1
                 print(f"\n🧽 You aggressively polish a copper mug on the cart and find 1x {found} hiding underneath!")
