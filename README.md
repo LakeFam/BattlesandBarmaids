@@ -166,24 +166,12 @@ The tests run against their own database, `battles_and_barmaids_test`. pytest re
 | `tests/test_app_helpers.py` | Unit: input validation helper in `app.py` |
 | `tests/conftest.py` | Shared setup: builds the test database from `schema.sql` plus migrations, and provides the `app` fixture that pytest-flask's `client` fixture uses |
 
-## Balance simulator
-
-`simulate.py` plays thousands of seeded quests through the game rules with a simple AI barmaid, and prints two reports: win rates from a fresh save for every barmaid, quest and party, and the boss win rate after farming the earlier quests. It reads the catalog from the database (`docker compose up -d db`) but never writes to it.
-
-```bash
-python simulate.py              # about 10 seconds
-python simulate.py --runs 1000  # steadier numbers
-```
-
-The AI's choices were tuned by simulation, so the numbers show what the kits can do rather than how a particular player plays. Change the stats in `entities.py` or `schema.sql` and rerun it to see the effect.
-
 ## Project layout
 
 | File | Purpose |
 |---|---|
 | `app.py` | Flask API |
 | `runs.py` | Quest runs for the API: loads, plays and saves a run using the game rules |
-| `simulate.py` | Balance simulator (see above) |
 | `database.py` | SQLAlchemy models and the database connection, shared by the API and the terminal game |
 | `schema.sql` | Starting table definitions and seed data |
 | `migrations/`, `migrate.py` | Schema changes since `schema.sql`, and the script that applies them |
