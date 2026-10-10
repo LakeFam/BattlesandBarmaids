@@ -1,7 +1,7 @@
 import os
 from datetime import datetime
 
-from sqlalchemy import ForeignKey, create_engine, func, select
+from sqlalchemy import ForeignKey, and_, create_engine, func, select
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column
 
 # Defaults to the Compose db on localhost:5434.
@@ -202,18 +202,18 @@ def get_player(barmaid_class):
         if player is None:
             return None
 
-        inventory_rows = session.execute(
+        rows = session.execute(
             select(ItemRow.emoji, ItemRow.name, PlayerInventoryRow.quantity)
-            .join(ItemRow, ItemRow.item_nbr == PlayerInventoryRow.item_nbr)
-            .where(PlayerInventoryRow.player_nbr == player.player_nbr)
+            .outerjoin(PlayerInventoryRow, and_(
+                PlayerInventoryRow.item_nbr == ItemRow.item_nbr,
+                PlayerInventoryRow.player_nbr == player.player_nbr,
+            ))
+            .order_by(ItemRow.item_nbr)
         ).all()
-        all_items = session.execute(select(ItemRow.emoji, ItemRow.name)).all()
 
         pantry = {}
-        for emoji, name, qty in inventory_rows:
-            pantry[f"{emoji} {name}"] = qty
-        for emoji, name in all_items:
-            pantry.setdefault(f"{emoji} {name}", 0)
+        for emoji, name, qty in rows:
+            pantry[f"{emoji} {name}"] = qty or 0
 
         return {
             "gold": player.gold,
@@ -221,6 +221,11 @@ def get_player(barmaid_class):
             "current_zone_nbr": player.current_zone_nbr,
             "pantry": pantry,
         }
+
+# {"emoji name": item_nbr}
+def get_item_nbrs(session):
+    rows = session.execute(select(ItemRow.item_nbr, ItemRow.emoji, ItemRow.name)).all()
+    return {f"{emoji} {name}": item_nbr for item_nbr, emoji, name in rows}
 
 # Inserts a new save.
 def create_player(player):
@@ -234,10 +239,9 @@ def create_player(player):
         session.add(row)
         session.flush()  # assigns row.player_nbr
 
+        item_nbrs = get_item_nbrs(session)
         for item, qty in player.pantry.items():
-            name = item.split(" ", 1)[1]
-            item_row = session.execute(select(ItemRow).where(ItemRow.name == name)).scalar_one()
-            session.add(PlayerInventoryRow(player_nbr=row.player_nbr, item_nbr=item_row.item_nbr, quantity=qty))
+            session.add(PlayerInventoryRow(player_nbr=row.player_nbr, item_nbr=item_nbrs[item], quantity=qty))
 
         session.commit()
 
@@ -251,19 +255,19 @@ def save_player(player):
         row.barmaid_super_charge = player.barmaid_super_charge
         row.current_zone_nbr = player.current_zone_nbr
 
+        item_nbrs = get_item_nbrs(session)
+        inventory = {
+            inv.item_nbr: inv
+            for inv in session.execute(
+                select(PlayerInventoryRow).where(PlayerInventoryRow.player_nbr == row.player_nbr)
+            ).scalars()
+        }
         for item, qty in player.pantry.items():
-            name = item.split(" ", 1)[1]
-            item_row = session.execute(select(ItemRow).where(ItemRow.name == name)).scalar_one()
-            inventory_row = session.execute(
-                select(PlayerInventoryRow).where(
-                    PlayerInventoryRow.player_nbr == row.player_nbr,
-                    PlayerInventoryRow.item_nbr == item_row.item_nbr,
-                )
-            ).scalar_one_or_none()
+            item_nbr = item_nbrs[item]
             # Item added since this player last saved.
-            if inventory_row is None:
-                session.add(PlayerInventoryRow(player_nbr=row.player_nbr, item_nbr=item_row.item_nbr, quantity=qty))
+            if item_nbr not in inventory:
+                session.add(PlayerInventoryRow(player_nbr=row.player_nbr, item_nbr=item_nbr, quantity=qty))
             else:
-                inventory_row.quantity = qty
+                inventory[item_nbr].quantity = qty
 
         session.commit()

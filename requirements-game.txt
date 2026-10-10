@@ -1,4 +1,4 @@
 # Terminal game
 -r requirements.txt
-pygame-ce
-rich
+pygame-ce==2.5.7
+rich==15.0.0

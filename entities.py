@@ -62,17 +62,20 @@ class Player:
             print(f"Pantry Stock: [{pantry_display}]")
 
             print()
+            ability_choices = [str(i) for i in range(1, len(self.abilities) + 1)]
+            polish_choice = str(len(self.abilities) + 1)
+            special_choice = str(len(self.abilities) + 2)
             for i, ability in enumerate(self.abilities, start=1):
                 cost_text = ", ".join(f"{amt}x {name}" for name, amt in ability["cost"].items())
                 print(f"{i}. {ability['label']} (Cost: {cost_text})")
-            print("4. 🧽 Polish Tumblers: Skip turn, scavenge +1 random ingredient.")
+            print(f"{polish_choice}. 🧽 Polish Tumblers: Skip turn, scavenge +1 random ingredient.")
             if self.barmaid_super_charge >= 100:
                 cost_text = ", ".join(f"{amt}x {name}" for name, amt in self.special["cost"].items())
-                print(f"5. {self.special['label']} (Cost: {cost_text})")
+                print(f"{special_choice}. {self.special['label']} (Cost: {cost_text})")
             else:
-                print("5. (Locked, requires 100% Super Charge)")
-            choice = input("Select hospitality action (1-5): ")
-            if choice in ('1', '2', '3'):
+                print(f"{special_choice}. (Locked, requires 100% Super Charge)")
+            choice = input(f"Select hospitality action (1-{special_choice}): ")
+            if choice in ability_choices:
                 ability = self.abilities[int(choice) - 1]
                 # One patron: pick a target.
                 if ability["target"] == "patron":
@@ -89,13 +92,13 @@ class Player:
                     time.sleep(.5)
                     return
             # Scavenge +1 random ingredient.
-            elif choice == '4':
+            elif choice == polish_choice:
                 sounds["barmaid_polish"].play()
                 found = random.choice(list(INGREDIENTS))
                 self.pantry[found] += 1
                 print(f"\n🧽 You aggressively polish a copper mug on the cart and find 1x {found} hiding underneath!")
                 return
-            elif choice == '5':
+            elif choice == special_choice:
                 if self.barmaid_super_charge < 100:
                     sounds["barmaid_fail"].play()
                     print("❌ Requires 100% Super Charge!")
@@ -334,20 +337,16 @@ class Bunhilda(Player):
 Player.classes = [Marigold, Saffron, Bunhilda]
 
 # Shared base for patrons and monsters
-
-class NPC_Class:
-    
-    def __init__(self, name, hp, speed, attack, aggro, style, is_player=False):
+class Character:
+    def __init__(self, name, hp, speed, attack, aggro):
         self.name = name
         self.max_hp = hp
         self.hp = hp
         self.speed = speed
         self.attack_power = attack
         self.aggro = aggro
-        self.combat_style = style
         self.defense_buff = 0
         self.power_meter = 0
-        self.is_player = is_player
         self.ignore_def = False
 
     def is_alive(self):
@@ -356,9 +355,8 @@ class NPC_Class:
     def execute_special(self, monster, patrons):
         pass
 
-class Patron(NPC_Class):
+class Patron(Character):
     hp = speed = attack = aggro = 0
-    style = "Melee"
     attack_sound = None
     special_sound = None
     attack_emoji = "⚔️"
@@ -366,7 +364,7 @@ class Patron(NPC_Class):
     death_message = None
 
     def __init__(self, name):
-        super().__init__(name, self.hp, self.speed, self.attack, self.aggro, self.style, is_player=True)
+        super().__init__(name, self.hp, self.speed, self.attack, self.aggro)
         self.weapon = None
         self.armor = None
 
@@ -380,7 +378,7 @@ class Patron(NPC_Class):
         pass
 
 class Paladin(Patron):
-    hp, speed, attack, aggro, style = 60, 4, 8, 9, "Melee"
+    hp, speed, attack, aggro = 60, 4, 8, 9
     attack_sound = "paladin_attack"
     special_sound = "paladin_special"
     attack_emoji = "🍳"
@@ -396,7 +394,7 @@ class Paladin(Patron):
         print(f"🛡️  {self.name} serves a hearty BLESSED STEW! {target.name} recovers {heal} HP and gains +3 Crust Defense!")
 
 class Warrior(Patron):
-    hp, speed, attack, aggro, style = 50, 6, 11, 7, "Melee"
+    hp, speed, attack, aggro = 50, 6, 11, 7
     attack_sound = "warrior_attack"
     special_sound = "warrior_special"
     attack_emoji = "🔨"
@@ -411,7 +409,7 @@ class Warrior(Patron):
         print_monster_death(monster)
 
 class Ranger(Patron):
-    hp, speed, attack, aggro, style = 40, 7, 10, 4, "Finesse"
+    hp, speed, attack, aggro = 40, 7, 10, 4
     attack_sound = "ranger_attack"
     special_sound = "ranger_special"
     attack_emoji = "🍢"
@@ -427,7 +425,7 @@ class Ranger(Patron):
         print_monster_death(monster)
 
 class Rogue(Patron):
-    hp, speed, attack, aggro, style = 30, 8, 14, 5, "Finesse"
+    hp, speed, attack, aggro = 30, 8, 14, 5
     attack_sound = "rogue_attack"
     special_sound = "rogue_special"
     attack_emoji = "🔪"
@@ -442,7 +440,7 @@ class Rogue(Patron):
         print_monster_death(monster)
 
 class Mage(Patron):
-    hp, speed, attack, aggro, style = 25, 5, 16, 4, "Magic"
+    hp, speed, attack, aggro = 25, 5, 16, 4
     attack_sound = "robot_attack"
     special_sound = "robot_special"
     attack_emoji = "✨"
@@ -459,13 +457,13 @@ class Mage(Patron):
 
 Patron.classes = [Paladin, Warrior, Ranger, Rogue, Mage]
 
-class Monster(NPC_Class):
+class Monster(Character):
     attack_sound = "monster_attack"
     flavor_text = MONSTER_FLAVOR
 
     # Aggro is unused for monsters (kept for later).
     def __init__(self, name, hp, speed, attack, attack_emoji="👹", resistant_damage_type=None, resistant_element=None):
-        super().__init__(name, hp=hp, speed=speed, attack=attack, aggro=0, style="Monster", is_player=False)
+        super().__init__(name, hp=hp, speed=speed, attack=attack, aggro=0)
         self.attack_emoji = attack_emoji
         self.resistant_damage_type = resistant_damage_type
         self.resistant_element = resistant_element

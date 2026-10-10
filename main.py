@@ -1,8 +1,14 @@
 # Battles and Barmaids: Enter the Taplands
 # Python 3.12+ with pygame-ce. Best in a dark terminal.
+import random
+import time
+
 from rich import print
-import random, sys, time, combat, database, shop
-from data import TITLE_FLAVOR
+
+import combat
+import database
+import shop
+from data import FLAGON_ART, TITLE_FLAVOR
 from entities import Monster, Patron, Player, flash_text, sounds
 
 QUESTS = database.get_quests()
@@ -33,9 +39,10 @@ class GameEngine:
         for i, cls in enumerate(Player.classes, start=1):
             print(f"[{i}] {cls.name} - {cls.kit_description}")
 
+        count = len(Player.classes)
         while True:
-            choice = input("Select your barmaid (1-3): ").strip()
-            if choice in ('1', '2', '3'):
+            choice = input(f"Select your barmaid (1-{count}): ").strip()
+            if choice in map(str, range(1, count + 1)):
                 break
             print("Invalid choice.")
 
@@ -74,35 +81,20 @@ class GameEngine:
         print()
         flash_text("Press [ENTER] to open the tavern doors and start the game...", flashes=0, delay=0.1)
         input()
-        print ("... Entering the Taplands...")
+        print("... Entering the Taplands...")
         sounds["title"].fadeout(6000)
         sounds["quest_combat"].fadeout(6000)
         sounds["tavern_ambience"].play(loops=-1, fade_ms=4000)
         sounds["press_enter"].play()
-        sounds["tavern_music"].play()
+        sounds["tavern_music"].play(loops=-1)
         time.sleep(6.5)
 
     # Phase 1: tavern hub (shop, quests, party draft)
     def phase_1_hub(self):
         while True:
-            flagon_art = r"""
-     )           (
-       .  '   .   '
-      (    , )
-        .' ) ( . )
-      .-'-------`-.
-     /             \
-    |===============|-.
-    | |  | 🔥 |   | |  \
-    | |  | 🔥 |   | |   |
-    | |  | 🔥 |   | |   |
-    |===============|  /
-    | |   |   |   | |-'
-     \             /
-      `-----------`"""           
             zone = ZONES[self.player.current_zone_nbr]
-            print("\n" * 100)
-            print(flagon_art)
+            shop.clear_screen()
+            print(FLAGON_ART)
             print("\n" + "="*50)
             print(f"=== 🍺 🐀 🍖 Enter {zone['tavern_name']} 🍖 🐀 🍺 ===")
             print("="*50)
@@ -131,6 +123,8 @@ class GameEngine:
                 break
             else:
                 print("Invalid choice.")
+                time.sleep(1.5)  # readable before the hub redraws
+
     # Quest board for the current zone
     def select_quest(self):
         print("\n--- TODAY'S SPECIALS (QUEST BOARD) ---")
@@ -153,11 +147,13 @@ class GameEngine:
         if q_choice not in map(str, zone_quests):
             if q_choice != '0':
                 print("Invalid choice. Returning to hub.")
+                time.sleep(1.5)
             return None
 
         selected_quest = zone_quests[int(q_choice)]
         print(f"\nRecipe Report: You Selected '{selected_quest['name']}' (3 courses, ending with {selected_quest['enemies'][3]['name']})!")
         return int(q_choice)
+
     # Draft 3 patrons from the bar pool
     def draft_party(self):
         print("\n--- BAR ROOM: SELECT YOUR PARTY OF 3 ---")
@@ -166,9 +162,8 @@ class GameEngine:
             bar_pool.append(cls(cls.name))
         roll_equipment(bar_pool)
 
-        for i in range(5):
-            c = bar_pool[i]
-            print(f"[{i+1}] {c.name} ({type(c).__name__}) - HP: {c.hp} | Atk: {c.attack_power} | Aggro: {c.aggro}")
+        for i, c in enumerate(bar_pool, start=1):
+            print(f"[{i}] {c.name} ({type(c).__name__}) - HP: {c.hp} | Atk: {c.attack_power} | Aggro: {c.aggro}")
             print(f"     🗡️ Weapon: {c.weapon['name']} (+{c.weapon['power']}) | 🛡️ Armor: {c.armor['name']} (+{c.armor['power']})")
 
         print("\nChoose 3 patrons from the bar pool (e.g., enter numbers space-separated like '1 3 4'):")
@@ -177,20 +172,20 @@ class GameEngine:
             if party is not None:
                 self.player.active_party = party
                 break
-            print("Invalid selection. Please enter exactly 3 different numbers between 1 and 5.")
+            print(f"Invalid selection. Please enter exactly 3 different numbers between 1 and {len(bar_pool)}.")
 
         print("\nParty Reserved! Preparing the kitchen-cart...")
 
     # Returns the 3 chosen patrons, or None for invalid input.
     def read_party_choice(self, bar_pool):
-        raw_choices = input("Your party draft (1-5): ").split()
+        raw_choices = input(f"Your party draft (1-{len(bar_pool)}): ").split()
 
         if len(raw_choices) != 3:
             return None
 
         indices = []
         for text in raw_choices:
-            if text not in map(str, range(1, 6)):
+            if text not in map(str, range(1, len(bar_pool) + 1)):
                 return None
             indices.append(int(text) - 1)
 
@@ -201,6 +196,7 @@ class GameEngine:
         for idx in indices:
             party.append(bar_pool[idx])
         return party
+
     # Phase 2: fight through 3 courses
     def phase_2_dungeon(self, quest_nbr):
         sounds["tavern_ambience"].fadeout(1500)
@@ -216,13 +212,10 @@ class GameEngine:
         patrons = self.player.active_party
 
         print("The dinner party staggers away from the bar counter.")
-        print("\nBunhilda securely locks down the tavern, grabbing the handles of her rolling kitchen-cart...")
+        print(f"\n{self.player.barmaid_name} securely locks down the tavern, grabbing the handles of her rolling kitchen-cart...")
         print(f"You descend into the tavern's damp dungeon tunnels to serve up {quest['name']}...")
         time.sleep(2)
-        # Fail if the whole party is down.
         for course in range(1, 4):
-            if not any(p.is_alive() for p in patrons):
-                return False, None
             enemy = quest['enemies'][course]
             monster = Monster(
                 enemy['name'], hp=enemy['hp'], speed=enemy['speed'], attack=enemy['attack'], attack_emoji=enemy['emoji'],
@@ -244,6 +237,7 @@ class GameEngine:
                 time.sleep(2)
 
         return True, quest['drops']
+
     # Phase 3: rewards or penalties
     def phase_3_resolution(self, victory, drops, quest_nbr):
         sounds["quest_combat"].fadeout(6000)
@@ -295,7 +289,6 @@ class GameEngine:
         self.player.current_zone_nbr = next_zone_nbr
         flash_text(f"🗺️  The road now leads onward to {ZONES[next_zone_nbr]['name']}!")
 
-# Cleaner audio start.
-time.sleep(.1)
-game = GameEngine()
-game.run()
+if __name__ == "__main__":
+    time.sleep(.1)  # cleaner audio start
+    GameEngine().run()

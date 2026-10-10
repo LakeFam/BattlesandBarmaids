@@ -12,14 +12,17 @@ def buy(player, sounds, cost, success_msg, success_sound, fail_msg):
         sounds["shop_broke"].play()
         return False
     player.gold -= cost
-    print(success_msg)
     clear_screen()
+    print(success_msg)
     sounds[success_sound].play()
     return True
 
 # Shop menu loop
 def shop(player, sounds):
     shop_inv = list(INGREDIENTS)
+    # 0-based; the two options after the ingredients.
+    restock_choice = len(shop_inv)
+    back_choice = restock_choice + 1
 
     while True:
         print("\n" + "~"*40)
@@ -27,22 +30,21 @@ def shop(player, sounds):
         print("~"*40)
         print(f"Current Gold: {player.gold}")
         print("Available Ingredients:")
-        for i in range(6):
-            item = shop_inv[i]
-            print(f"{i + 1}. {item} - {INGREDIENTS[item]} Gold (In Stock: {player.pantry[item]})")
-        print("7. Restock All Ingredients (+2 to each) - 50 Gold")
-        print("8. Back to Tavern Hub")
+        for i, item in enumerate(shop_inv, start=1):
+            print(f"{i}. {item} - {INGREDIENTS[item]} Gold (In Stock: {player.pantry[item]})")
+        print(f"{restock_choice + 1}. Restock All Ingredients (+2 to each) - 50 Gold")
+        print(f"{back_choice + 1}. Back to Tavern Hub")
         raw_choice = input("Select item to buy: ")
         if raw_choice.isdigit():
             choice = int(raw_choice) - 1
         else:
             choice = -1
-        if not 0 <= choice <= 7:
+        if not 0 <= choice <= back_choice:
             clear_screen()
             print("Invalid selection.")
-        elif choice == 7:
+        elif choice == back_choice:
             break
-        elif choice == 6:
+        elif choice == restock_choice:
             if buy(player, sounds, 50,
                    "🎉 Bulk order delivered! All pantry ingredients increased by 2.",
                    "shop_restock", "❌ Not enough gold for a bulk restock!"):
