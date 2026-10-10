@@ -1,6 +1,4 @@
-# Battles and Barmaids: Flask REST API
-# Serves the game's world catalog and player saves over HTTP. Only imports
-# database.py, so it doesn't need pygame or a terminal like main.py does.
+# Battles and Barmaids REST API.
 from flask import Flask, abort, jsonify, request, url_for
 from sqlalchemy import and_, select
 from sqlalchemy.exc import IntegrityError
@@ -14,36 +12,35 @@ from database import (
 )
 
 app = Flask(__name__)
-app.json.sort_keys = False    # keep fields in the order they're built below
-app.json.ensure_ascii = False  # send emoji as-is instead of \u escapes
+app.json.sort_keys = False    # keep field order
+app.json.ensure_ascii = False  # emoji as-is
 
 EQUIPMENT_TYPES = ("weapon", "armor", "both")
 EQUIPMENT_TIERS = ("novice", "veteran", "elite")
 EQUIPMENT_RARITIES = ("common", "uncommon", "rare", "shiny")
-MAX_NAME_LENGTH = 40
 
-# Every error (including Flask's own 404/405) comes back as {"error": "..."}.
+# All errors as {"error": "..."}.
 @app.errorhandler(HTTPException)
 def handle_http_error(err):
     return jsonify(error=err.description), err.code
 
 # --- Request helpers ---
 
-# Returns the request's JSON body, or a 422 if it isn't a JSON object.
+# JSON object body, else 422.
 def json_body():
     body = request.get_json(silent=True)
     if not isinstance(body, dict):
         abort(422, "Request body must be a JSON object (send Content-Type: application/json).")
     return body
 
-# Reads an optional query parameter, rejecting values outside `allowed`.
+# Optional query param limited to `allowed`.
 def query_choice(name, allowed):
     value = request.args.get(name)
     if value is not None and value not in allowed:
         abort(422, f"{name} must be one of: {', '.join(allowed)}.")
     return value
 
-# Reads an optional integer query parameter.
+# Optional integer query param.
 def query_int(name):
     value = request.args.get(name)
     if value is None:
@@ -52,17 +49,17 @@ def query_int(name):
         abort(422, f"{name} must be a whole number.")
     return int(value)
 
-# bool is a subclass of int in Python, so True/False are ruled out explicitly.
+# Rejects bools (bool subclasses int).
 def is_positive_int(value):
     return isinstance(value, int) and not isinstance(value, bool) and value > 0
 
-def get_player_or_404(session, barmaid_name, lock=False):
-    query = select(PlayerRow).where(PlayerRow.barmaid_name == barmaid_name)
+def get_player_or_404(session, barmaid_class, lock=False):
+    query = select(PlayerRow).where(PlayerRow.barmaid_class == barmaid_class)
     if lock:
-        query = query.with_for_update()  # stops two purchases from spending the same gold
+        query = query.with_for_update()  # no double-spending
     player = session.execute(query).scalar_one_or_none()
     if player is None:
-        abort(404, f"No save found for barmaid '{barmaid_name}'.")
+        abort(404, f"No save found for {barmaid_class}.")
     return player
 
 # --- JSON shapes ---
@@ -126,8 +123,7 @@ def equipment_json(equipment):
         "cost": equipment.cost,
     }
 
-# Every catalog item with the player's quantity, so items added to the
-# catalog after the player last saved show up at 0 (same as database.get_player).
+# Every item, at 0 if the player has none.
 def inventory_json(session, player):
     rows = session.execute(
         select(ItemRow, PlayerInventoryRow.quantity)
@@ -144,7 +140,6 @@ def inventory_json(session, player):
 
 def player_json(session, player):
     return {
-        "barmaid_name": player.barmaid_name,
         "barmaid_class": player.barmaid_class,
         "gold": player.gold,
         "barmaid_super_charge": player.barmaid_super_charge,
@@ -235,23 +230,12 @@ def list_equipment():
 
 @app.post("/players")
 def create_player():
-    body = json_body()
-    barmaid_name = body.get("barmaid_name")
-    barmaid_class = body.get("barmaid_class")
-
-    if not isinstance(barmaid_name, str) or not barmaid_name.strip():
-        abort(422, "barmaid_name is required.")
-    barmaid_name = barmaid_name.strip()
-    if len(barmaid_name) > MAX_NAME_LENGTH:
-        abort(422, f"barmaid_name can be at most {MAX_NAME_LENGTH} characters.")
-    if "/" in barmaid_name:
-        abort(422, "barmaid_name can't contain '/', since it's used in the URL.")
+    barmaid_class = json_body().get("barmaid_class")
     if barmaid_class not in BARMAID_CLASSES:
         abort(422, f"barmaid_class must be one of: {', '.join(BARMAID_CLASSES)}.")
 
     with Session(engine) as session:
         player = PlayerRow(
-            barmaid_name=barmaid_name,
             barmaid_class=barmaid_class,
             gold=STARTING_GOLD,
             barmaid_super_charge=0,
@@ -259,9 +243,9 @@ def create_player():
         )
         session.add(player)
         try:
-            session.flush()  # assigns player.player_nbr; fails here if the name is taken
+            session.flush()  # raises if this barmaid already has a save
         except IntegrityError:
-            abort(409, f"A save named '{barmaid_name}' already exists.")
+            abort(409, f"{barmaid_class} already has a save.")
 
         for item_nbr in session.execute(select(ItemRow.item_nbr)).scalars():
             session.add(PlayerInventoryRow(
@@ -271,29 +255,29 @@ def create_player():
 
         response = jsonify(player_json(session, player))
         response.status_code = 201
-        response.headers["Location"] = url_for("get_player", barmaid_name=barmaid_name)
+        response.headers["Location"] = url_for("get_player", barmaid_class=barmaid_class)
         return response
 
-@app.get("/players/<barmaid_name>")
-def get_player(barmaid_name):
+@app.get("/players/<barmaid_class>")
+def get_player(barmaid_class):
     with Session(engine) as session:
-        return jsonify(player_json(session, get_player_or_404(session, barmaid_name)))
+        return jsonify(player_json(session, get_player_or_404(session, barmaid_class)))
 
-# player_inventory and player_adventurers rows go with it (ON DELETE CASCADE).
-@app.delete("/players/<barmaid_name>")
-def delete_player(barmaid_name):
+# Inventory and adventurers cascade.
+@app.delete("/players/<barmaid_class>")
+def delete_player(barmaid_class):
     with Session(engine) as session:
-        session.delete(get_player_or_404(session, barmaid_name))
+        session.delete(get_player_or_404(session, barmaid_class))
         session.commit()
     return "", 204
 
-@app.get("/players/<barmaid_name>/inventory")
-def get_inventory(barmaid_name):
+@app.get("/players/<barmaid_class>/inventory")
+def get_inventory(barmaid_class):
     with Session(engine) as session:
-        return jsonify(inventory_json(session, get_player_or_404(session, barmaid_name)))
+        return jsonify(inventory_json(session, get_player_or_404(session, barmaid_class)))
 
-@app.post("/players/<barmaid_name>/purchases")
-def purchase(barmaid_name):
+@app.post("/players/<barmaid_class>/purchases")
+def purchase(barmaid_class):
     body = json_body()
     item_nbr = body.get("item_nbr")
     quantity = body.get("quantity", 1)
@@ -303,14 +287,14 @@ def purchase(barmaid_name):
         abort(422, "quantity must be a positive whole number.")
 
     with Session(engine) as session:
-        player = get_player_or_404(session, barmaid_name, lock=True)
+        player = get_player_or_404(session, barmaid_class, lock=True)
         item = session.get(ItemRow, item_nbr)
         if item is None:
             abort(404, f"Item {item_nbr} not found.")
 
         total_cost = item.cost * quantity
         if player.gold < total_cost:
-            abort(422, f"{quantity}x {item.name} costs {total_cost} gold, but {barmaid_name} only has {player.gold}.")
+            abort(422, f"{quantity}x {item.name} costs {total_cost} gold, but {barmaid_class} only has {player.gold}.")
 
         player.gold -= total_cost
         inventory_row = session.get(PlayerInventoryRow, (player.player_nbr, item_nbr))
@@ -326,11 +310,11 @@ def purchase(barmaid_name):
             "inventory": inventory_json(session, player),
         })
 
-# Every adventurer class, at level 1 with no gear if the player has no row for it yet.
-@app.get("/players/<barmaid_name>/adventurers")
-def get_adventurers(barmaid_name):
+# Classes without a row default to level 1, no gear.
+@app.get("/players/<barmaid_class>/adventurers")
+def get_adventurers(barmaid_class):
     with Session(engine) as session:
-        player = get_player_or_404(session, barmaid_name)
+        player = get_player_or_404(session, barmaid_class)
         rows = session.execute(
             select(PlayerAdventurerRow).where(PlayerAdventurerRow.player_nbr == player.player_nbr)
         ).scalars()

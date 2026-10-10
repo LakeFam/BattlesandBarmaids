@@ -1,6 +1,4 @@
-# Shared test setup. The tests run against their own database,
-# battles_and_barmaids_test, which is rebuilt from schema.sql at the start of
-# every run, so the game's real saves are never touched.
+# Tests use their own database, rebuilt from schema.sql every run.
 import os
 from pathlib import Path
 
@@ -10,23 +8,21 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import OperationalError
 
-# These have to be set before anything imports database.py (which builds its
-# engine from DATABASE_URL) or data.py (which starts the pygame mixer).
+# Must be set before database.py and data.py are imported.
 TEST_DATABASE_URL = os.environ.get(
     "TEST_DATABASE_URL",
     "postgresql+psycopg://postgres:postgres@localhost:5434/battles_and_barmaids_test",
 )
 os.environ["DATABASE_URL"] = TEST_DATABASE_URL
-os.environ["SDL_AUDIODRIVER"] = "dummy"  # sounds "play" silently during tests
+os.environ["SDL_AUDIODRIVER"] = "dummy"  # silent sounds
 os.environ["PYGAME_HIDE_SUPPORT_PROMPT"] = "1"
 
 SCHEMA_SQL = Path(__file__).parent.parent / "schema.sql"
 
-# Runs before any test file is imported. That matters because importing
-# entities.py (and so combat.py) reads the ingredient list from the database.
+# Runs before test modules import entities.py, which queries the database.
 def pytest_configure(config):
     url = make_url(TEST_DATABASE_URL)
-    # This database gets dropped, so make sure it isn't the real one.
+    # Never drop a non-test database.
     if not url.database.endswith("_test"):
         pytest.exit(f"TEST_DATABASE_URL must point at a *_test database, not '{url.database}'.")
 
@@ -40,14 +36,12 @@ def pytest_configure(config):
     finally:
         server.dispose()
 
-    # schema.sql is many statements in one file. psycopg can run them in a
-    # single execute() as long as there are no query parameters.
+    # Multi-statement execute() works without parameters.
     libpq_url = url.set(drivername="postgresql").render_as_string(hide_password=False)
     with psycopg.connect(libpq_url) as conn:
         conn.execute(SCHEMA_SQL.read_text(encoding="utf-8"))
 
-# pytest-flask looks for a fixture named `app` and builds its `client`
-# fixture from it. Every test that uses it starts with no player saves.
+# pytest-flask builds `client` from this fixture.
 @pytest.fixture
 def app():
     import app as api
@@ -56,13 +50,12 @@ def app():
     api.app.config["TESTING"] = True
     yield api.app
 
-    # Removing the players also removes their inventory and adventurers (ON DELETE CASCADE).
+    # Cascades to inventory and adventurers.
     with database.engine.begin() as conn:
         conn.execute(text("TRUNCATE players CASCADE"))
 
-# A fresh save for tests that need a player to work with.
 @pytest.fixture
 def new_player(client):
-    response = client.post("/players", json={"barmaid_name": "Bran", "barmaid_class": "Bunhilda"})
+    response = client.post("/players", json={"barmaid_class": "Bunhilda"})
     assert response.status_code == 201
     return response.json

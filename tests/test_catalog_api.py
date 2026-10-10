@@ -1,5 +1,4 @@
-# Integration tests for the read-only world catalog endpoints. They run
-# against the seed data that schema.sql loads into the test database.
+# Catalog endpoints, against the schema.sql seed data.
 import pytest
 
 def test_items_lists_seeded_ingredients(client):
@@ -64,6 +63,6 @@ def test_wrong_method_returns_json_405(client):
     assert response.status_code == 405
     assert "error" in response.json
 
-# pytest-flask's `config` fixture is the app's config.
+# `config` comes from pytest-flask.
 def test_app_runs_in_testing_mode(config):
     assert config["TESTING"] is True

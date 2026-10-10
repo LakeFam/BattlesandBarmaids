@@ -1,6 +1,4 @@
--- Run this against an empty battles_and_barmaids database. Under Docker
--- Compose, Postgres creates that database (POSTGRES_DB) and runs this file
--- automatically the first time the db volume is initialized.
+-- Run against an empty battles_and_barmaids database (Compose does this on first start).
 
 CREATE TABLE items (
     item_nbr SERIAL PRIMARY KEY,
@@ -9,15 +7,14 @@ CREATE TABLE items (
     cost INTEGER NOT NULL CHECK (cost >= 0)
 );
 
--- Story chapters, per NARRATIVE.md section 5 (The Narrative Arc).
+-- Story chapters (docs/story-plans.md)
 CREATE TABLE chapters (
     chapter_nbr INTEGER PRIMARY KEY,
     name TEXT NOT NULL,
     description TEXT NOT NULL
 );
 
--- Locations, per NARRATIVE.md section 2 (The World & Setting). Each zone
--- belongs to the chapter it's introduced in.
+-- Locations (NARRATIVE.md section 2), each in the chapter that introduces it
 CREATE TABLE zones (
     zone_nbr SERIAL PRIMARY KEY,
     chapter_nbr INTEGER NOT NULL REFERENCES chapters(chapter_nbr),
@@ -35,8 +32,7 @@ CREATE TABLE quests (
     is_boss BOOLEAN NOT NULL DEFAULT FALSE
 );
 
--- Every quest board lookup filters by zone_nbr, so it's worth indexing
--- even though it's not the primary key.
+-- The quest board filters by zone.
 CREATE INDEX idx_quests_zone_nbr ON quests (zone_nbr);
 
 CREATE TABLE quest_drops (
@@ -61,8 +57,7 @@ CREATE TABLE monsters (
 
 CREATE TABLE players (
     player_nbr SERIAL PRIMARY KEY,
-    barmaid_name TEXT NOT NULL UNIQUE,
-    barmaid_class TEXT NOT NULL CHECK (barmaid_class IN ('Marigold', 'Saffron', 'Bunhilda')),
+    barmaid_class TEXT NOT NULL UNIQUE CHECK (barmaid_class IN ('Marigold', 'Saffron', 'Bunhilda')),
     gold INTEGER NOT NULL DEFAULT 10 CHECK (gold >= 0),
     barmaid_super_charge INTEGER NOT NULL DEFAULT 0 CHECK (barmaid_super_charge BETWEEN 0 AND 100),
     current_zone_nbr INTEGER NOT NULL REFERENCES zones(zone_nbr) DEFAULT 1,
@@ -76,9 +71,7 @@ CREATE TABLE player_inventory (
     PRIMARY KEY (player_nbr, item_nbr)
 );
 
--- Weapon/armor catalog. tier gates which adventurer levels can roll a given
--- item (mapped to level ranges in Python, not enforced here); rarity is
--- unused for now but will drive drop odds and, for 'shiny', a bonus effect.
+-- Weapons and armor. tier maps to adventurer levels in Python; rarity is reserved for drop odds.
 CREATE TABLE equipment (
     equipment_nbr SERIAL PRIMARY KEY,
     name TEXT NOT NULL UNIQUE,
@@ -91,8 +84,7 @@ CREATE TABLE equipment (
     cost INTEGER NOT NULL CHECK (cost >= 0)
 );
 
--- Per-player progress for each of the 5 fixed adventurer classes (Paladin,
--- Warrior, Ranger, Rogue, Mage). Weapon/armor are re-rolled at party draft time.
+-- Per-player progress for the 5 adventurer classes. Gear is re-rolled at draft time.
 CREATE TABLE player_adventurers (
     player_nbr INTEGER NOT NULL REFERENCES players(player_nbr) ON DELETE CASCADE,
     adventurer_class TEXT NOT NULL CHECK (adventurer_class IN ('Paladin', 'Warrior', 'Ranger', 'Rogue', 'Mage')),
@@ -127,9 +119,7 @@ INSERT INTO zones (chapter_nbr, name, description, tavern_name, culinary_theme) 
 (4, 'The Crashed Titan Sanctuary', 'A colossal alien war-machine fallen into a lake. Its flooded crater serves as the ultimate future home base for the culinary resistance.', 'The Geothermal Galley', 'Deep-Crater Feasting'),
 (5, 'The Corporate Wall', 'A creeping, grey-and-neon border of moving mega-fortresses. The Wall slowly rolls westward, ingesting boutique shops, independent farms, and taverns, only to extrude uniform, sterile franchise chains and endless vats of "pink slime."', 'The Liberated Cafeteria', 'Reclaimed Franchise Slop');
 
--- The existing 3 quests predate NARRATIVE.md; their boss (The Baconnator, a
--- boar) matches Chapter 1's "Great Boar," so they're placed in the Village
--- of the Hearth for now.
+-- The Baconnator is Chapter 1's Great Boar (NARRATIVE.md section 6).
 INSERT INTO quests (quest_nbr, zone_nbr, name, description, is_boss) VALUES
 (1, (SELECT zone_nbr FROM zones WHERE name = 'The Village of the Hearth'), 'Mystery Meat! Clearing the Cellar Rats', 'Ratta Chewie, the Cellar King, holds his throne,
 A hulking rat lord with a crown made of bone,
@@ -174,8 +164,7 @@ UPDATE monsters SET resistant_damage_type = 'tenderize' WHERE quest_nbr = 1 AND 
 -- The Baconnator is "sizzling and vast" - a frosty attack barely registers.
 UPDATE monsters SET resistant_element = 'frosty' WHERE quest_nbr = 3 AND course = 3;
 
--- Equipment seed data (rolled at party-draft time; see player_adventurers comment above).
--- Every damage_type and every element is covered by exactly one weapon/'both' item.
+-- Each damage_type and element appears on exactly one weapon or 'both' item.
 INSERT INTO equipment (name, type, tier, rarity, damage_type, element, power, cost) VALUES
 ('Cast-Iron Skillet',        'weapon', 'novice', 'common',   'tenderize', NULL,      6, 14),
 ('Red-Hot Poker',            'weapon', 'novice', 'common',   'skewer',    NULL,      7, 16),

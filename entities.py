@@ -7,7 +7,7 @@ from data import FINESSE_FLAVOR, MAGIC_FLAVOR, MELEE_FLAVOR, MONSTER_DEATH_MESSA
 
 INGREDIENTS = database.get_ingredients()
 
-# Moved dealing damage to a function to allow for death check, death sound.
+# Applies damage; plays the death sound on a kill.
 def deal_damage(target, dmg, death_sound):
     target.hp -= dmg
     if not target.is_alive():
@@ -17,7 +17,7 @@ def print_monster_death(monster):
     if not monster.is_alive():
         print(random.choice(MONSTER_DEATH_MESSAGES).format(name=monster.name))
 
-# Some handy flashing text function for dramatic effect.
+# Flashing text for dramatic effect
 def flash_text(text, flashes=3, delay=0.2):
     for _ in range(flashes):
         sys.stdout.write(f"\r\033[1;33m{text}\033[0m")
@@ -27,11 +27,7 @@ def flash_text(text, flashes=3, delay=0.2):
         sys.stdout.flush()
         time.sleep(delay)
     print(f"\033[1;33m{text}\033[0m")
-# There's the Player, and NPCs (Patrons and Monsters). Player details here.
-# Player is the base class for the 3 selectable barmaids (see Player.classes,
-# set after all 3 are defined below). Each barmaid keeps the same turn
-# structure (3 costed abilities + a free scavenge + a 100%-charge special)
-# but supplies its own kit via build_abilities()/build_special().
+# Base class for the 3 barmaids; each supplies its kit via build_abilities()/build_special().
 class Player:
     name = None
     kit_description = None
@@ -40,6 +36,7 @@ class Player:
         self.gold = database.STARTING_GOLD
         self.pantry = {item: database.STARTING_PANTRY_QTY for item in INGREDIENTS}
         self.barmaid_name = self.name
+        self.barmaid_class = type(self).__name__  # save key: "Marigold", "Saffron" or "Bunhilda"
         self.barmaid_super_charge = 0
         self.current_zone_nbr = 1
         self.active_party = []
@@ -57,7 +54,6 @@ class Player:
             print("\n" + "="*40)
             print(f"--- {self.barmaid_name.upper()}'S MOBILE KITCHEN-CART ---")
             print(f"Barmaid Super Charge: {self.barmaid_super_charge}%")
-            # Display stocked pantry items
             in_stock = []
             for k, v in self.pantry.items():
                 if v > 0:
@@ -70,21 +66,19 @@ class Player:
                 cost_text = ", ".join(f"{amt}x {name}" for name, amt in ability["cost"].items())
                 print(f"{i}. {ability['label']} (Cost: {cost_text})")
             print("4. 🧽 Polish Tumblers: Skip turn, scavenge +1 random ingredient.")
-            # Only displays option if the barmaid has enough super charge.
             if self.barmaid_super_charge >= 100:
                 cost_text = ", ".join(f"{amt}x {name}" for name, amt in self.special["cost"].items())
                 print(f"5. {self.special['label']} (Cost: {cost_text})")
             else:
                 print("5. (Locked, requires 100% Super Charge)")
-            # Selectable actions for Player/Barmaid.
             choice = input("Select hospitality action (1-5): ")
             if choice in ('1', '2', '3'):
                 ability = self.abilities[int(choice) - 1]
-                # Targets one patron, so uses serve_item for selection.
+                # One patron: pick a target.
                 if ability["target"] == "patron":
                     if self.serve_item(patrons, ability["cost"], ability["charge"], ability["effect"]):
                         return
-                # Targets the whole living party, or the one monster in combat.
+                # Whole party, or the monster.
                 elif self.check_supplies(ability["cost"]):
                     self.deduct_supplies(ability["cost"])
                     if ability["target"] == "party":
@@ -94,13 +88,12 @@ class Player:
                     self.barmaid_super_charge = min(100, self.barmaid_super_charge + ability["charge"])
                     time.sleep(.5)
                     return
-            # Freebie action if pantry is empty, gives a random ingredient to the barmaid's pantry.
+            # Scavenge +1 random ingredient.
             elif choice == '4':
                 found = random.choice(list(INGREDIENTS))
                 self.pantry[found] += 1
                 print(f"\n🧽 You aggressively polish a copper mug on the cart and find 1x {found} hiding underneath!")
                 return
-            # Only available if the barmaid has full super charge.
             elif choice == '5':
                 if self.barmaid_super_charge < 100:
                     sounds["barmaid_fail"].play()
@@ -121,7 +114,7 @@ class Player:
     def serve_item(self, patrons, cost, charge_gain, apply_effect):
         if not self.check_supplies(cost):
             return False
-        # Who can be targeted? Only the living.
+        # Only living patrons can be targeted.
         living = [p for p in patrons if p.is_alive()]
         if len(living) == 1:
             target = living[0]
@@ -142,7 +135,7 @@ class Player:
         # Spend, and apply.
         self.deduct_supplies(cost)
         apply_effect(target)
-        # Adds super charge to Barmaid, but prevents super charge from exceeding 100%
+        # Super charge caps at 100%.
         self.barmaid_super_charge = min(100, self.barmaid_super_charge + charge_gain)
         return True
 
@@ -339,7 +332,7 @@ class Bunhilda(Player):
 
 Player.classes = [Marigold, Saffron, Bunhilda]
 
-# Patrons and Monsters were merged to a single NPC_Class as primary class.
+# Shared base for patrons and monsters
 
 class NPC_Class:
     
@@ -376,7 +369,7 @@ class Patron(NPC_Class):
         self.weapon = None
         self.armor = None
 
-    # Patron-specific, for now. Will be moved up to NPC_Class when monsters get specials.
+    # Patron-only until monsters get specials.
     def execute_special(self, monster, patrons):
         sounds[self.special_sound].play()
         flash_text(f"🌟 {self.name}'s APPETITE METER IS BURSTING! 🌟")
@@ -469,7 +462,7 @@ class Monster(NPC_Class):
     attack_sound = "monster_attack"
     flavor_text = MONSTER_FLAVOR
 
-    # Note: Aggro is irrelevant in this version, but is kept for future use.
+    # Aggro is unused for monsters (kept for later).
     def __init__(self, name, hp, speed, attack, attack_emoji="👹", resistant_damage_type=None, resistant_element=None):
         super().__init__(name, hp=hp, speed=speed, attack=attack, aggro=0, style="Monster", is_player=False)
         self.attack_emoji = attack_emoji

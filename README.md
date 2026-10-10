@@ -8,17 +8,20 @@ The full proposal is in [docs/week1-report.txt](docs/week1-report.txt).
 
 ## Status
 
-**Working now (Week 2)**
+**Week 2**
 
 - Flask API with the world catalog and player-save endpoints (listed below)
 - `Dockerfile` for the API (gunicorn on `python:3.13-slim`, running as a non-root user)
 - `docker-compose.yml` with `web` and `db` services. Postgres loads `schema.sql` (tables and seed data) on first start, and the app reads its connection from `DATABASE_URL`.
 - Schema updates for the API: `players.barmaid_class`, plus CHECK constraints on gold, quantities, costs and stats
-- pytest tests for the API (using pytest-flask) and the combat rules. See [Running the tests](#running-the-tests).
+
+**Week 3**
+
+- pytest tests: integration tests for the API (using pytest-flask) and unit tests for the combat rules. See [Running the tests](#running-the-tests).
 
 **Next**
 
-- Week 3: quest-run endpoints (start a quest, draft a party, take combat turns). This means separating the combat rules from the terminal code (`input()`, `print()` and pygame sound) so the API can call them.
+- Quest-run endpoints (start a quest, draft a party, take combat turns). This means separating the combat rules from the terminal code (`input()`, `print()` and pygame sound) so the API can call them.
 - Week 4: deploy to a cloud provider and/or add a GitHub Actions workflow that builds and tests the app.
 
 ## Running it with Docker
@@ -37,9 +40,9 @@ curl http://localhost:5000/quests/3
 
 curl -X POST http://localhost:5000/players \
      -H "Content-Type: application/json" \
-     -d '{"barmaid_name": "Bran", "barmaid_class": "Bunhilda"}'
+     -d '{"barmaid_class": "Bunhilda"}'
 
-curl -X POST http://localhost:5000/players/Bran/purchases \
+curl -X POST http://localhost:5000/players/Bunhilda/purchases \
      -H "Content-Type: application/json" \
      -d '{"item_nbr": 1, "quantity": 2}'
 ```
@@ -71,23 +74,23 @@ All bodies are JSON. Errors come back as `{"error": "..."}` with `404` (not foun
 
 ### Players
 
-There's no login; the barmaid name identifies the save.
+There's no login. Each barmaid has one save, shared with the terminal game.
 
 | Method | Path | Description |
 |---|---|---|
-| POST | `/players` | Create a save. Body: `{"barmaid_name": "Bran", "barmaid_class": "Bunhilda"}`. Class is `Marigold`, `Saffron` or `Bunhilda`. Returns `201`, or `409` if the name is taken. |
-| GET | `/players/<barmaid_name>` | Gold, super charge, current zone, class and pantry |
-| DELETE | `/players/<barmaid_name>` | Delete the save and its inventory. Returns `204`. |
-| GET | `/players/<barmaid_name>/inventory` | Ingredient quantities |
-| POST | `/players/<barmaid_name>/purchases` | Buy ingredients. Body: `{"item_nbr": 3, "quantity": 2}`. Returns `422` if the player can't afford it. |
-| GET | `/players/<barmaid_name>/adventurers` | Level and gear for each of the 5 adventurer classes |
+| POST | `/players` | Create a save. Body: `{"barmaid_class": "Bunhilda"}`. Class is `Marigold`, `Saffron` or `Bunhilda`. Returns `201`, or `409` if that barmaid already has a save. |
+| GET | `/players/<barmaid_class>` | Gold, super charge, current zone, class and pantry |
+| DELETE | `/players/<barmaid_class>` | Delete the save and its inventory. Returns `204`. |
+| GET | `/players/<barmaid_class>/inventory` | Ingredient quantities |
+| POST | `/players/<barmaid_class>/purchases` | Buy ingredients. Body: `{"item_nbr": 3, "quantity": 2}`. Returns `422` if the player can't afford it. |
+| GET | `/players/<barmaid_class>/adventurers` | Level and gear for each of the 5 adventurer classes |
 
-### Planned: quest runs (Week 3)
+### Planned: quest runs
 
 | Method | Path | Description |
 |---|---|---|
-| POST | `/players/<barmaid_name>/runs` | Start a quest |
-| GET | `/players/<barmaid_name>/runs` | Run history |
+| POST | `/players/<barmaid_class>/runs` | Start a quest |
+| GET | `/players/<barmaid_class>/runs` | Run history |
 | GET | `/runs/<run_nbr>` | Current state of a run |
 | POST | `/runs/<run_nbr>/party` | Draft 3 of the 5 patrons |
 | POST | `/runs/<run_nbr>/actions` | Take the barmaid's turn. The server resolves the rest of the round. |
@@ -140,7 +143,8 @@ The tests run against their own database, `battles_and_barmaids_test`. pytest re
 | `requirements-dev.txt` | Adds pytest and pytest-flask for the tests |
 | `tests/`, `pytest.ini` | Tests and pytest settings |
 | `main.py`, `entities.py`, `combat.py`, `shop.py`, `data.py` | Terminal game |
-| `NARRATIVE.md` | Story, setting and characters |
+| `NARRATIVE.md` | This game's world, characters and how it plays |
+| `docs/story-plans.md` | The full story, planned for a future game |
 | `project.drawio` | Design diagram |
 | `docs/week1-report.txt` | Project proposal |
 

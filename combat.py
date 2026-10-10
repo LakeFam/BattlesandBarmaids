@@ -6,8 +6,7 @@ from entities import deal_damage, print_monster_death, sounds
 def get_speed(actor):
     return actor["speed"]
 
-# Checks the patron's equipped weapon against the monster's resistances. If either
-# the weapon's damage_type or element matches, damage is halved (floored at 1).
+# Halves damage (min 1) if the monster resists the weapon's damage type or element.
 def apply_monster_resistance(patron, monster, dmg):
     if patron.weapon is None:
         return dmg, False
@@ -22,7 +21,7 @@ def apply_monster_resistance(patron, monster, dmg):
         return dmg, False
     return max(1, dmg // 2), True
 
-# Combat loop for a single course. Returns True if the monster was defeated, False if all patrons were defeated.
+# One course. True if the monster dies, False if the party does.
 def run_course(course, patrons, monster, player):
     round_num = 1
     while monster.is_alive():
@@ -33,13 +32,12 @@ def run_course(course, patrons, monster, player):
         print(f"\n--- BATTLE ROUND {round_num} (Course {course}) ---")
         print(f"Monster: {monster.name} ({monster.hp}/{monster.max_hp} HP)")
         print("Patron Status:")
-        # Only lists living Patrons
         for p in living_patrons:
             print(f"  - {p.name}: {p.hp}/{p.max_hp} HP [Appetite Meter: {p.power_meter}%]")
         time.sleep(1)
 
         player.take_turn(patrons, monster)
-        #Some randomness to the turn order to make it more dynamic.
+        # Jitter the turn order a little.
         turn_order = [{"type": "monster", "speed": monster.speed + random.randint(-2, 2)}]
         for p in living_patrons:
             turn_order.append({"type": "patron", "ref": p, "speed": p.speed + random.randint(-2, 2)})
@@ -50,12 +48,11 @@ def run_course(course, patrons, monster, player):
                 break
             take_turn(actor, patrons, monster)
             time.sleep(1)
-        # Increments the round.
         round_num += 1
 
     return True
 
-# Non-Player turn logic.
+# Patron or monster turn
 def take_turn(actor, patrons, monster):
     living_patrons = [p for p in patrons if p.is_alive()]
 
@@ -70,26 +67,24 @@ def take_turn(actor, patrons, monster):
         dmg = patron.attack_power
         if patron.weapon is not None:
             dmg += patron.weapon["power"]
-        # Nice little logic to make an attack ignore defense, then reset it back to normal.
+        # One-time +5 armor-piercing bonus
         if patron.ignore_def:
             dmg += 5
             patron.ignore_def = False
         dmg, resisted = apply_monster_resistance(patron, monster, dmg)
         deal_damage(monster, dmg, "monster_death")
-        # A flavor text randomizer to make the combat more dynamic and fun.
         flavor_verb = random.choice(patron.flavor_text)
         print(f"{patron.attack_emoji} {patron.name} {flavor_verb} the {monster.name} for {dmg} damage!")
         if resisted:
             trait = patron.weapon["damage_type"] or patron.weapon["element"]
             print(f"🍽️  {monster.name} is resistant to {trait}! The {patron.weapon['name']} only lands a glancing blow.")
         print_monster_death(monster)
-        # Increments the power meter for the Patron.
         patron.power_meter = min(100, patron.power_meter + 25)
     # Monster mash...
     elif actor["type"] == "monster":
         sounds[monster.attack_sound].play()
         weights = []
-        # Uses random.choices with weights to select a single patron influenced by their aggro level.
+        # Target weighted by aggro
         for p in living_patrons:
             weights.append(p.aggro)
         target = random.choices(living_patrons, weights=weights, k=1)[0]
@@ -100,14 +95,10 @@ def take_turn(actor, patrons, monster):
         dmg = max(1, monster.attack_power - target.defense_buff - armor_power)
         deal_damage(target, dmg, "patron_death")
 
-        # A flavor text randomizer to make the combat more dynamic and fun.
         flavor_verb = random.choice(monster.flavor_text)
         print(f"{monster.attack_emoji} {monster.name} {flavor_verb} {target.name} for {dmg} damage!")
 
-        # Checks if the target Patron is dead and prints a death message if so.
         if not target.is_alive():
             print(target.death_message)
-        # Decreases the target Patron's defense buff by 1, but not below 0.
         target.defense_buff = max(0, target.defense_buff - 1)
-        # Increments the power meter for the Patron attacked.
         target.power_meter = min(100, target.power_meter + 35)

@@ -4,7 +4,7 @@ from entities import INGREDIENTS
 def clear_screen():
     print("\n" * 100)
 
-# Shop purchase function. Returns True if payment succeeded.
+# Returns True if the player could pay.
 def buy(player, sounds, cost, success_msg, success_sound, fail_msg):
     if player.gold < cost:
         clear_screen()
@@ -17,7 +17,7 @@ def buy(player, sounds, cost, success_msg, success_sound, fail_msg):
     sounds[success_sound].play()
     return True
 
-# Shop function for interface and such.
+# Shop menu loop
 def shop(player, sounds):
     shop_inv = list(INGREDIENTS)
 
@@ -32,13 +32,11 @@ def shop(player, sounds):
             print(f"{i + 1}. {item} - {INGREDIENTS[item]} Gold (In Stock: {player.pantry[item]})")
         print("7. Restock All Ingredients (+2 to each) - 50 Gold")
         print("8. Back to Tavern Hub")
-        # Input validation for shop selection.
         raw_choice = input("Select item to buy: ")
         if raw_choice.isdigit():
             choice = int(raw_choice) - 1
         else:
             choice = -1
-        # An invalid selection will just loop back to the shop menu.
         if not 0 <= choice <= 7:
             clear_screen()
             print("Invalid selection.")

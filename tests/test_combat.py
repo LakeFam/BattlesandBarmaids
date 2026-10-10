@@ -1,5 +1,4 @@
-# Unit tests for the combat rules in combat.py and entities.py, using the
-# game's real patron, monster and barmaid classes.
+# Combat rules, using the game's real classes.
 import combat
 from entities import Bunhilda, Monster, Paladin, Warrior
 
@@ -86,7 +85,7 @@ def test_ignore_defense_adds_five_damage_once():
 # --- Barmaid ---
 
 def test_barmaid_has_supplies_for_affordable_cost():
-    barmaid = Bunhilda()  # starts with 6 of each ingredient
+    barmaid = Bunhilda()  # 6 of each ingredient
 
     assert barmaid.check_supplies({"🍖 Holy Ham": 2}) is True
     assert barmaid.check_supplies({"🍖 Holy Ham": 7}) is False

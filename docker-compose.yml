@@ -7,10 +7,10 @@ services:
       POSTGRES_PASSWORD: postgres  # local development only
     volumes:
       - db-data:/var/lib/postgresql/data
-      # Runs once, the first time the db-data volume is empty.
+      # Runs on first start only.
       - ./schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
     ports:
-      # 5434 on the host so it doesn't clash with a local Postgres (5432) or pgAdmin (5433).
+      # Avoids local Postgres (5432) and pgAdmin (5433).
       - "5434:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d battles_and_barmaids"]

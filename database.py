@@ -4,8 +4,7 @@ from datetime import datetime
 from sqlalchemy import ForeignKey, create_engine, func, select
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column
 
-# Set DATABASE_URL to point at a different Postgres server. The default is the
-# db service from docker-compose.yml, which is published on localhost:5434.
+# Defaults to the Compose db on localhost:5434.
 DATABASE_URL = os.environ.get(
     "DATABASE_URL",
     "postgresql+psycopg://postgres:postgres@localhost:5434/battles_and_barmaids",
@@ -13,25 +12,19 @@ DATABASE_URL = os.environ.get(
 
 engine = create_engine(DATABASE_URL)
 
-# Allowed values for the players.barmaid_class and
-# player_adventurers.adventurer_class CHECK constraints in schema.sql.
+# Match the CHECK constraints in schema.sql.
 BARMAID_CLASSES = ("Marigold", "Saffron", "Bunhilda")
 ADVENTURER_CLASSES = ("Paladin", "Warrior", "Ranger", "Rogue", "Mage")
 
-# Every new save starts with this much gold and this many of each ingredient.
+# New-save defaults.
 STARTING_GOLD = 10
 STARTING_PANTRY_QTY = 6
 
-# schema.sql is the source of truth for the actual table definitions
-# (constraints, defaults, indexes). These model classes just describe the
-# same tables/columns to SQLAlchemy so it can build queries against them —
-# they are never used to create or migrate the schema.
+# schema.sql defines the tables; these models only describe them for queries.
 class Base(DeclarativeBase):
     pass
 
-# Named with a "Row" suffix since entities.py already has its own Player
-# and Monster classes for in-memory game state — these classes represent
-# persisted database rows instead, and the two should not be confused.
+# "Row" suffix avoids confusion with entities.py's Player and Monster.
 
 class ItemRow(Base):
     __tablename__ = "items"
@@ -84,7 +77,6 @@ class MonsterRow(Base):
 class PlayerRow(Base):
     __tablename__ = "players"
     player_nbr: Mapped[int] = mapped_column(primary_key=True)
-    barmaid_name: Mapped[str]
     barmaid_class: Mapped[str]
     gold: Mapped[int]
     barmaid_super_charge: Mapped[int]
@@ -117,7 +109,7 @@ class PlayerAdventurerRow(Base):
     weapon_nbr: Mapped[int | None] = mapped_column(ForeignKey("equipment.equipment_nbr"))
     armor_nbr: Mapped[int | None] = mapped_column(ForeignKey("equipment.equipment_nbr"))
 
-# Returns the ingredient catalog as {"emoji name": cost}, same shape as the old INGREDIENTS dict.
+# {"emoji name": cost}
 def get_ingredients():
     with Session(engine) as session:
         rows = session.execute(select(ItemRow).order_by(ItemRow.item_nbr)).scalars().all()
@@ -127,8 +119,7 @@ def get_ingredients():
         ingredients[f"{item.emoji} {item.name}"] = item.cost
     return ingredients
 
-# Returns the quest catalog as {quest_nbr: {name, description, zone_nbr, is_boss, drops, enemies}},
-# same shape as the old QUESTS dict, plus zone_nbr/is_boss for zone progression.
+# {quest_nbr: {name, description, zone_nbr, is_boss, drops, enemies}}
 def get_quests():
     with Session(engine) as session:
         quest_rows = session.execute(select(QuestRow).order_by(QuestRow.quest_nbr)).scalars().all()
@@ -167,7 +158,7 @@ def get_quests():
 
     return quests
 
-# Returns the zone catalog as {zone_nbr: {chapter_nbr, name, description, tavern_name, culinary_theme}}.
+# {zone_nbr: {chapter_nbr, name, description, tavern_name, culinary_theme}}
 def get_zones():
     with Session(engine) as session:
         rows = session.execute(select(ZoneRow).order_by(ZoneRow.zone_nbr)).scalars().all()
@@ -183,7 +174,7 @@ def get_zones():
         }
     return zones
 
-# Returns the equipment catalog as {equipment_nbr: {name, type, tier, rarity, damage_type, element, power, cost}}.
+# {equipment_nbr: {name, type, tier, rarity, damage_type, element, power, cost}}
 def get_equipment():
     with Session(engine) as session:
         rows = session.execute(select(EquipmentRow).order_by(EquipmentRow.equipment_nbr)).scalars().all()
@@ -202,12 +193,11 @@ def get_equipment():
         }
     return equipment
 
-# Returns {gold, barmaid_super_charge, current_zone_nbr, pantry} for a saved barmaid, or None if no save exists.
-# Any item added to the catalog after this barmaid last saved is backfilled into the pantry at 0.
-def get_player(barmaid_name):
+# Save as {gold, barmaid_super_charge, current_zone_nbr, pantry}, or None. New items appear at 0.
+def get_player(barmaid_class):
     with Session(engine) as session:
         player = session.execute(
-            select(PlayerRow).where(PlayerRow.barmaid_name == barmaid_name)
+            select(PlayerRow).where(PlayerRow.barmaid_class == barmaid_class)
         ).scalar_one_or_none()
         if player is None:
             return None
@@ -232,18 +222,17 @@ def get_player(barmaid_name):
             "pantry": pantry,
         }
 
-# Inserts a brand-new save row for a Player that has no existing save yet.
+# Inserts a new save.
 def create_player(player):
     with Session(engine) as session:
         row = PlayerRow(
-            barmaid_name=player.barmaid_name,
-            barmaid_class=type(player).__name__,  # "Marigold", "Saffron" or "Bunhilda"
+            barmaid_class=player.barmaid_class,
             gold=player.gold,
             barmaid_super_charge=player.barmaid_super_charge,
             current_zone_nbr=player.current_zone_nbr,
         )
         session.add(row)
-        session.flush()  # assigns row.player_nbr so the inventory rows below can reference it
+        session.flush()  # assigns row.player_nbr
 
         for item, qty in player.pantry.items():
             name = item.split(" ", 1)[1]
@@ -252,11 +241,11 @@ def create_player(player):
 
         session.commit()
 
-# Updates an existing save row to match the Player's current gold/charge/zone/pantry.
+# Updates an existing save.
 def save_player(player):
     with Session(engine) as session:
         row = session.execute(
-            select(PlayerRow).where(PlayerRow.barmaid_name == player.barmaid_name)
+            select(PlayerRow).where(PlayerRow.barmaid_class == player.barmaid_class)
         ).scalar_one()
         row.gold = player.gold
         row.barmaid_super_charge = player.barmaid_super_charge
@@ -271,8 +260,7 @@ def save_player(player):
                     PlayerInventoryRow.item_nbr == item_row.item_nbr,
                 )
             ).scalar_one_or_none()
-            # A player who saved before this item existed won't have a row for
-            # it yet, so it's inserted here instead of updated.
+            # Item added since this player last saved.
             if inventory_row is None:
                 session.add(PlayerInventoryRow(player_nbr=row.player_nbr, item_nbr=item_row.item_nbr, quantity=qty))
             else:

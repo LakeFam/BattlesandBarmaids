@@ -1,7 +1,5 @@
 # Battles and Barmaids: Enter the Taplands
-# NOTE: This is a Python 3.11+ project that uses the pygame library for audio playback.
-# NOTE: pip install pygame-ce for audio support.
-# NOTE: Recommend a dark terminal theme for best visual experience.
+# Python 3.12+ with pygame-ce. Best in a dark terminal.
 from rich import print
 import random, sys, time, combat, database, shop
 from data import TITLE_FLAVOR
@@ -11,12 +9,11 @@ QUESTS = database.get_quests()
 ZONES = database.get_zones()
 EQUIPMENT = database.get_equipment()
 
-# Is a list unique entries? (Used for party draft input validation.)
+# True if lst has no duplicates.
 def is_unique(lst):
     return len(lst) == len(set(lst))
 
-# Rolls a random weapon and a random armor piece for each patron in the bar pool
-# (schema.sql: weapon/armor are "re-rolled at party draft time").
+# Random weapon and armor for each patron.
 def roll_equipment(bar_pool):
     weapon_choices = []
     armor_choices = []
@@ -30,7 +27,6 @@ def roll_equipment(bar_pool):
         patron.weapon = random.choice(weapon_choices)
         patron.armor = random.choice(armor_choices)
 
-# Main Game Engine
 class GameEngine:
     def __init__(self):
         print("\n--- CHOOSE YOUR BARMAID ---")
@@ -45,7 +41,7 @@ class GameEngine:
 
         self.player = Player.classes[int(choice) - 1]()
 
-        saved = database.get_player(self.player.barmaid_name)
+        saved = database.get_player(self.player.barmaid_class)
         if saved is None:
             database.create_player(self.player)
         else:
@@ -64,7 +60,7 @@ class GameEngine:
             self.phase_3_resolution(victory, drops, quest_nbr)
             quest_nbr = self.phase_1_hub()
 
-    # Show the title screen and wait for user input to start the game
+    # Title screen
     def show_title_screen(self):
         sounds["title"].play()
         time.sleep(.2)
@@ -86,10 +82,9 @@ class GameEngine:
         sounds["tavern_music"].play()
         time.sleep(6.5)
 
-    # Phase 1: Tavern Hub - Player can buy ingredients, select quests, and draft party
+    # Phase 1: tavern hub (shop, quests, party draft)
     def phase_1_hub(self):
         while True:
-            # Display the Tavern Hub interface
             flagon_art = r"""
      )           (
        .  '   .   '
@@ -119,7 +114,6 @@ class GameEngine:
             print("\n1. Visit the Pantry Market (Buy Ingredients)")
             print("2. Review Tonight's Special Menu & Make Reservations.")
             print("3. Lock up the Tavern & Quit")
-            # Player selects action (shop/quest/exit)
             choice = input("\nChoose activity (1-3): ")
 
             if choice == '1':
@@ -137,7 +131,7 @@ class GameEngine:
                 break
             else:
                 print("Invalid choice.")
-    # Quest selection screen (only shows quests in the player's current zone)
+    # Quest board for the current zone
     def select_quest(self):
         print("\n--- TODAY'S SPECIALS (QUEST BOARD) ---")
         zone_quests = {}
@@ -164,7 +158,7 @@ class GameEngine:
         selected_quest = zone_quests[int(q_choice)]
         print(f"\nRecipe Report: You Selected '{selected_quest['name']}' (3 courses, ending with {selected_quest['enemies'][3]['name']})!")
         return int(q_choice)
-    # Party draft process: player selects 3 patrons from the bar pool
+    # Draft 3 patrons from the bar pool
     def draft_party(self):
         print("\n--- BAR ROOM: SELECT YOUR PARTY OF 3 ---")
         bar_pool = []
@@ -187,9 +181,7 @@ class GameEngine:
 
         print("\nParty Reserved! Preparing the kitchen-cart...")
 
-    # Reads one line of party-draft input, returning the 3 chosen
-    # patrons from bar_pool, or None if the input was malformed/out
-    # of range/had duplicates.
+    # Returns the 3 chosen patrons, or None for invalid input.
     def read_party_choice(self, bar_pool):
         raw_choices = input("Your party draft (1-5): ").split()
 
@@ -209,7 +201,7 @@ class GameEngine:
         for idx in indices:
             party.append(bar_pool[idx])
         return party
-    # Phase 2: Dungeon Combat - Player's party fights through 3 courses of enemies    
+    # Phase 2: fight through 3 courses
     def phase_2_dungeon(self, quest_nbr):
         sounds["tavern_ambience"].fadeout(1500)
         sounds["press_enter"].fadeout(1500)
@@ -227,11 +219,10 @@ class GameEngine:
         print("\nBunhilda securely locks down the tavern, grabbing the handles of her rolling kitchen-cart...")
         print(f"You descend into the tavern's damp dungeon tunnels to serve up {quest['name']}...")
         time.sleep(2)
-        # Life check: if all patrons are dead, the quest fails immediately.
+        # Fail if the whole party is down.
         for course in range(1, 4):
             if not any(p.is_alive() for p in patrons):
                 return False, None
-            # Each course has a different enemy, created here from the quest data.
             enemy = quest['enemies'][course]
             monster = Monster(
                 enemy['name'], hp=enemy['hp'], speed=enemy['speed'], attack=enemy['attack'], attack_emoji=enemy['emoji'],
@@ -253,13 +244,12 @@ class GameEngine:
                 time.sleep(2)
 
         return True, quest['drops']
-    # Phase 3: Quest Resolution - Player receives rewards, or penalties based on outcome.
+    # Phase 3: rewards or penalties
     def phase_3_resolution(self, victory, drops, quest_nbr):
         sounds["quest_combat"].fadeout(6000)
         print("\n" + "="*50)
         print("=== LAST CALL! SETTLE THE TAB ===")
         print("="*50)
-        # Resolution: Victory or Defeat
         if victory:
             sounds["quest_victory"].play()
             sounds["barmaid_victory"].play()
@@ -278,7 +268,7 @@ class GameEngine:
             flash_text("💀 KITCHEN DISASTER! YOUR PARTY WAS OVERWHELMED! 💀")
             print("Your party couldn't stomach all three courses!")
             self.player.gold = max(0, self.player.gold - 15)
-        # Some nice ambience and music as the party returns to the tavern hub.
+        # Return-to-tavern ambience
         print("\nDragging the kitchen-cart back to the Tavern Hub...")
         sounds["cart_return"].play()
         sounds["tavern_ambience"].play(loops=-1, fade_ms=4000)
@@ -287,7 +277,7 @@ class GameEngine:
         time.sleep(3)
         database.save_player(self.player)
 
-    # Called after clearing a zone's boss quest; moves the player to the next zone in chapter order.
+    # After a boss: move to the next chapter's zone.
     def advance_zone(self):
         current_chapter = ZONES[self.player.current_zone_nbr]["chapter_nbr"]
         next_zone_nbr = None
@@ -307,6 +297,5 @@ class GameEngine:
 
 # Cleaner audio start.
 time.sleep(.1)
-# Start the game engine
 game = GameEngine()
 game.run()

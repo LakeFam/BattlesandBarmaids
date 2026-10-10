@@ -1,5 +1,4 @@
-# Integration tests for player saves and the shop. Each test starts with no
-# players (see the `app` fixture in conftest.py).
+# Player save and shop endpoints.
 import pytest
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -7,11 +6,11 @@ from sqlalchemy.orm import Session
 import database
 
 def test_create_player_starts_with_gold_and_full_pantry(client):
-    response = client.post("/players", json={"barmaid_name": "Bran", "barmaid_class": "Bunhilda"})
+    response = client.post("/players", json={"barmaid_class": "Bunhilda"})
     player = response.json
 
     assert response.status_code == 201
-    assert response.headers["Location"] == "/players/Bran"
+    assert response.headers["Location"] == "/players/Bunhilda"
     assert player["barmaid_class"] == "Bunhilda"
     assert player["gold"] == 10
     assert player["current_zone_nbr"] == 1
@@ -19,17 +18,15 @@ def test_create_player_starts_with_gold_and_full_pantry(client):
     assert all(item["quantity"] == 6 for item in player["pantry"])
 
 @pytest.mark.usefixtures("new_player")
-def test_create_player_with_taken_name_conflicts(client):
-    response = client.post("/players", json={"barmaid_name": "Bran", "barmaid_class": "Saffron"})
+def test_create_second_save_for_same_barmaid_conflicts(client):
+    response = client.post("/players", json={"barmaid_class": "Bunhilda"})
 
     assert response.status_code == 409
 
 @pytest.mark.parametrize("body", [
-    pytest.param({"barmaid_class": "Bunhilda"}, id="no name"),
-    pytest.param({"barmaid_name": "   ", "barmaid_class": "Bunhilda"}, id="blank name"),
-    pytest.param({"barmaid_name": "B" * 41, "barmaid_class": "Bunhilda"}, id="name too long"),
-    pytest.param({"barmaid_name": "Bran/Ann", "barmaid_class": "Bunhilda"}, id="slash in name"),
-    pytest.param({"barmaid_name": "Bran", "barmaid_class": "Wizard"}, id="unknown class"),
+    pytest.param({}, id="no class"),
+    pytest.param({"barmaid_class": "Wizard"}, id="unknown class"),
+    pytest.param({"barmaid_class": "bunhilda"}, id="wrong case"),
 ])
 def test_create_player_rejects_invalid_input(client, body):
     response = client.post("/players", json=body)
@@ -37,46 +34,46 @@ def test_create_player_rejects_invalid_input(client, body):
     assert response.status_code == 422
 
 def test_create_player_rejects_non_json_body(client):
-    response = client.post("/players", data="Bran")
+    response = client.post("/players", data="Bunhilda")
 
     assert response.status_code == 422
 
 @pytest.mark.usefixtures("new_player")
 def test_get_player_returns_the_save(client):
-    response = client.get("/players/Bran")
+    response = client.get("/players/Bunhilda")
 
     assert response.status_code == 200
-    assert response.json["barmaid_name"] == "Bran"
+    assert response.json["barmaid_class"] == "Bunhilda"
 
-def test_get_unknown_player_returns_404(client):
-    response = client.get("/players/Nobody")
+def test_get_barmaid_without_save_returns_404(client):
+    response = client.get("/players/Saffron")
 
     assert response.status_code == 404
 
 @pytest.mark.usefixtures("new_player")
 def test_delete_player_removes_save_and_inventory(client):
-    response = client.delete("/players/Bran")
+    response = client.delete("/players/Bunhilda")
 
     assert response.status_code == 204
-    assert client.get("/players/Bran").status_code == 404
-    # The pantry rows go with the player (ON DELETE CASCADE in schema.sql).
+    assert client.get("/players/Bunhilda").status_code == 404
+    # ON DELETE CASCADE
     with Session(database.engine) as session:
         assert session.scalars(select(database.PlayerInventoryRow)).all() == []
 
 @pytest.mark.usefixtures("new_player")
 def test_purchase_spends_gold_and_adds_to_inventory(client):
-    response = client.post("/players/Bran/purchases", json={"item_nbr": 1, "quantity": 2})
+    response = client.post("/players/Bunhilda/purchases", json={"item_nbr": 1, "quantity": 2})
 
     assert response.status_code == 200
-    assert response.json["gold"] == 0  # 2 Mighty Malt at 5 gold each
+    assert response.json["gold"] == 0  # 2 x 5 gold
     assert response.json["inventory"][0]["quantity"] == 8
 
 @pytest.mark.usefixtures("new_player")
 def test_purchase_player_cannot_afford_is_rejected(client):
-    response = client.post("/players/Bran/purchases", json={"item_nbr": 6, "quantity": 1})
+    response = client.post("/players/Bunhilda/purchases", json={"item_nbr": 6, "quantity": 1})
 
     assert response.status_code == 422
-    assert client.get("/players/Bran").json["gold"] == 10
+    assert client.get("/players/Bunhilda").json["gold"] == 10
 
 @pytest.mark.parametrize("body", [
     pytest.param({"item_nbr": True}, id="item is a boolean"),
@@ -86,24 +83,24 @@ def test_purchase_player_cannot_afford_is_rejected(client):
 ])
 @pytest.mark.usefixtures("new_player")
 def test_purchase_rejects_invalid_input(client, body):
-    response = client.post("/players/Bran/purchases", json=body)
+    response = client.post("/players/Bunhilda/purchases", json=body)
 
     assert response.status_code == 422
 
 @pytest.mark.usefixtures("new_player")
 def test_purchase_unknown_item_returns_404(client):
-    response = client.post("/players/Bran/purchases", json={"item_nbr": 99})
+    response = client.post("/players/Bunhilda/purchases", json={"item_nbr": 99})
 
     assert response.status_code == 404
 
-def test_purchase_for_unknown_player_returns_404(client):
-    response = client.post("/players/Nobody/purchases", json={"item_nbr": 1})
+def test_purchase_for_barmaid_without_save_returns_404(client):
+    response = client.post("/players/Saffron/purchases", json={"item_nbr": 1})
 
     assert response.status_code == 404
 
 @pytest.mark.usefixtures("new_player")
 def test_adventurers_start_at_level_one_without_gear(client):
-    response = client.get("/players/Bran/adventurers")
+    response = client.get("/players/Bunhilda/adventurers")
 
     assert response.status_code == 200
     adventurers = response.json
