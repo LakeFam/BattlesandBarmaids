@@ -1,0 +1,4 @@
+# Running the tests: the API and terminal game packages, plus pytest
+-r requirements-game.txt
+pytest==9.1.1
+pytest-flask==1.3.0

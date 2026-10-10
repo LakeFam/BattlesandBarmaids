@@ -14,10 +14,11 @@ The full proposal is in [docs/week1-report.txt](docs/week1-report.txt).
 - `Dockerfile` for the API (gunicorn on `python:3.13-slim`, running as a non-root user)
 - `docker-compose.yml` with `web` and `db` services. Postgres loads `schema.sql` (tables and seed data) on first start, and the app reads its connection from `DATABASE_URL`.
 - Schema updates for the API: `players.barmaid_class`, plus CHECK constraints on gold, quantities, costs and stats
+- pytest tests for the API (using pytest-flask) and the combat rules. See [Running the tests](#running-the-tests).
 
 **Next**
 
-- Week 3: quest-run endpoints (start a quest, draft a party, take combat turns), and pytest tests. This means separating the combat rules from the terminal code (`input()`, `print()` and pygame sound) so the API can call them.
+- Week 3: quest-run endpoints (start a quest, draft a party, take combat turns). This means separating the combat rules from the terminal code (`input()`, `print()` and pygame sound) so the API can call them.
 - Week 4: deploy to a cloud provider and/or add a GitHub Actions workflow that builds and tests the app.
 
 ## Running it with Docker
@@ -104,6 +105,28 @@ python main.py
 
 `database.py` connects to the Compose database on `localhost:5434` by default. To use a different server, set `DATABASE_URL`, for example `postgresql+psycopg://user:password@localhost:5432/battles_and_barmaids`.
 
+## Running the tests
+
+The tests use [pytest](https://docs.pytest.org/) and [pytest-flask](https://pytest-flask.readthedocs.io/). They need Python 3.12+ and the Compose database.
+
+```bash
+docker compose up -d db
+python -m venv .venv
+.venv\Scripts\activate          # Windows; on macOS/Linux: source .venv/bin/activate
+pip install -r requirements-dev.txt
+pytest -v
+```
+
+The tests run against their own database, `battles_and_barmaids_test`. pytest rebuilds it from `schema.sql` at the start of every run, so your saved games are never touched. To run the tests against another server, set `TEST_DATABASE_URL`. Its database name must end in `_test`, because that database gets dropped and recreated.
+
+| File | What it tests |
+|---|---|
+| `tests/test_catalog_api.py` | Integration: the read-only catalog endpoints return the seed data, filter correctly, and send JSON errors |
+| `tests/test_players_api.py` | Integration: creating, reading and deleting saves, and buying ingredients, including rejected input |
+| `tests/test_combat.py` | Unit: weapon resistance, attack and armor math, and barmaid supplies and abilities |
+| `tests/test_app_helpers.py` | Unit: input validation helper in `app.py` |
+| `tests/conftest.py` | Shared setup: builds the test database and provides the `app` fixture that pytest-flask's `client` fixture uses |
+
 ## Project layout
 
 | File | Purpose |
@@ -114,6 +137,8 @@ python main.py
 | `Dockerfile`, `docker-compose.yml` | Container setup |
 | `requirements.txt` | API dependencies (installed in the image) |
 | `requirements-game.txt` | Adds pygame-ce and rich for the terminal game |
+| `requirements-dev.txt` | Adds pytest and pytest-flask for the tests |
+| `tests/`, `pytest.ini` | Tests and pytest settings |
 | `main.py`, `entities.py`, `combat.py`, `shop.py`, `data.py` | Terminal game |
 | `NARRATIVE.md` | Story, setting and characters |
 | `project.drawio` | Design diagram |
