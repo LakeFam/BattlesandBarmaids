@@ -1,7 +1,7 @@
 # Battles and Barmaids REST API.
 from flask import Flask, abort, jsonify, request, url_for
-from sqlalchemy import and_, select
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy import and_, select, text
+from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import Session
 from werkzeug.exceptions import HTTPException
 
@@ -155,6 +155,16 @@ def player_json(session, player):
         "updated_at": player.updated_at.isoformat(),
         "pantry": inventory_json(session, player),
     }
+
+# For Docker and CI: is the API up, and can it reach Postgres?
+@app.get("/health")
+def health():
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+    except OperationalError:
+        return jsonify(status="unavailable", database="unreachable"), 503
+    return jsonify(status="ok", database="ok")
 
 # --- World catalog (read-only) ---
 

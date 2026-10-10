@@ -1,5 +1,7 @@
 # Battles and Barmaids: Enter the Taplands
 
+[![CI](https://github.com/LakeFam/BattlesandBarmaids/actions/workflows/ci.yml/badge.svg)](https://github.com/LakeFam/BattlesandBarmaids/actions/workflows/ci.yml)
+
 A turn-based tavern RPG. You play a barmaid running a mobile kitchen-cart in the resistance against the Corporate Wall, a creeping line of franchise-slop fortresses. You buy ingredients, draft a party of 3 adventurer patrons, and fight through quests of 3 "courses," one monster per course. Each round, the barmaid serves or throws an ingredient, and then the patrons and the monster act automatically in speed order.
 
 The game started as a terminal app for my SQL course, with its data in PostgreSQL through SQLAlchemy. **For this portfolio project, I'm putting a Flask REST API in front of the game so it can be played over HTTP, one request per turn.** The app runs as two Docker containers: a Flask web service and a Postgres database.
@@ -23,9 +25,14 @@ The full proposal is in [docs/week1-report.txt](docs/week1-report.txt). One chan
 - Migrations: `migrate.py` applies new files in `migrations/` on top of `schema.sql`, so schema changes no longer mean deleting the database.
 - Quest-run endpoints (listed below): start a quest, draft a party, take combat turns and abandon a run. `runs.py` loads a saved run as game objects, plays the round with the same rules as the terminal game, and saves it back in one transaction.
 
+**Week 4**
+
+- GitHub Actions workflow (`.github/workflows/ci.yml`) on every push to `main` and every pull request. One job runs the tests against a Postgres service container. The other builds the image, starts the Compose stack, and checks that the API answers.
+- `GET /health`, which also checks the database connection. The `web` service's Compose healthcheck uses it, so `docker compose up --wait` waits until the API is ready.
+
 **Next**
 
-- Week 4: deploy to a cloud provider and/or add a GitHub Actions workflow that builds and tests the app.
+- Deploy to a cloud provider.
 
 ## Running it with Docker
 
@@ -62,6 +69,8 @@ docker compose up --build
 ## API endpoints
 
 All bodies are JSON. Errors come back as `{"error": "..."}` with `404` (not found), `409` (conflicts with current state) or `422` (invalid input).
+
+`GET /health` returns `{"status": "ok", "database": "ok"}`, or `503` if the API can't reach Postgres.
 
 ### World catalog (read-only)
 
@@ -152,6 +161,7 @@ The tests run against their own database, `battles_and_barmaids_test`. pytest re
 | `tests/test_combat.py` | Unit: weapon resistance, attack and armor math, barmaid actions (including rejected ones) and combat rounds. Also checks that the rules never load pygame. |
 | `tests/test_runs_api.py` | Integration: starting, drafting, playing, winning, losing and abandoning runs, including resent rounds and rejected actions |
 | `tests/test_quest_runs_schema.py` | Integration: the quest-run tables' constraints (one unfinished run per player, consistent status, valid patron state) and that migrations only apply once |
+| `tests/test_health.py` | Integration: `/health` with the database up and unreachable |
 | `tests/test_app_helpers.py` | Unit: input validation helper in `app.py` |
 | `tests/conftest.py` | Shared setup: builds the test database from `schema.sql` plus migrations, and provides the `app` fixture that pytest-flask's `client` fixture uses |
 
@@ -165,6 +175,7 @@ The tests run against their own database, `battles_and_barmaids_test`. pytest re
 | `schema.sql` | Starting table definitions and seed data |
 | `migrations/`, `migrate.py` | Schema changes since `schema.sql`, and the script that applies them |
 | `Dockerfile`, `docker-compose.yml` | Container setup |
+| `.github/workflows/ci.yml` | GitHub Actions: tests, plus a Docker build and smoke test |
 | `requirements.txt` | API dependencies (installed in the image) |
 | `requirements-game.txt` | Adds pygame-ce and rich for the terminal game |
 | `requirements-dev.txt` | Adds pytest and pytest-flask for the tests. The tests don't need pygame. |
