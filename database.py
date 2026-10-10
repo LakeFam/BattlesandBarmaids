@@ -109,6 +109,36 @@ class PlayerAdventurerRow(Base):
     weapon_nbr: Mapped[int | None] = mapped_column(ForeignKey("equipment.equipment_nbr"))
     armor_nbr: Mapped[int | None] = mapped_column(ForeignKey("equipment.equipment_nbr"))
 
+# migrations/001_quest_runs.sql
+class QuestRunRow(Base):
+    __tablename__ = "quest_runs"
+    run_nbr: Mapped[int] = mapped_column(primary_key=True)
+    player_nbr: Mapped[int] = mapped_column(ForeignKey("players.player_nbr"))
+    quest_nbr: Mapped[int] = mapped_column(ForeignKey("quests.quest_nbr"))
+    status: Mapped[str] = mapped_column(server_default="drafting")
+    course: Mapped[int] = mapped_column(server_default="1")
+    round_nbr: Mapped[int] = mapped_column(server_default="1")
+    monster_hp: Mapped[int | None]
+    monster_attack: Mapped[int | None]
+    monster_speed: Mapped[int | None]
+    started_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    ended_at: Mapped[datetime | None]
+
+class QuestRunPatronRow(Base):
+    __tablename__ = "quest_run_patrons"
+    run_nbr: Mapped[int] = mapped_column(ForeignKey("quest_runs.run_nbr"), primary_key=True)
+    slot: Mapped[int] = mapped_column(primary_key=True)
+    adventurer_class: Mapped[str]
+    is_drafted: Mapped[bool] = mapped_column(server_default="false")
+    hp: Mapped[int]
+    max_hp: Mapped[int]
+    attack_power: Mapped[int]
+    power_meter: Mapped[int] = mapped_column(server_default="0")
+    defense_buff: Mapped[int] = mapped_column(server_default="0")
+    ignore_def: Mapped[bool] = mapped_column(server_default="false")
+    weapon_nbr: Mapped[int | None] = mapped_column(ForeignKey("equipment.equipment_nbr"))
+    armor_nbr: Mapped[int | None] = mapped_column(ForeignKey("equipment.equipment_nbr"))
+
 # {"emoji name": cost}
 def get_ingredients():
     with Session(engine) as session:

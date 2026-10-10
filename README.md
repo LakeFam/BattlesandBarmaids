@@ -19,10 +19,12 @@ The full proposal is in [docs/week1-report.txt](docs/week1-report.txt). One chan
 
 - pytest tests: integration tests for the API (using pytest-flask) and unit tests for the combat rules. See [Running the tests](#running-the-tests).
 - Combat rules separated from the terminal code. `entities.py` and `combat.py` return an event log (text plus sound names) and raise `ActionError` for invalid barmaid actions, instead of calling `print()`, `input()` or pygame. `terminal.py` prints and plays the events, and only `audio.py` loads pygame.
+- Quest-run tables (`quest_runs` and `quest_run_patrons`) from the proposal, added as the first migration. They also store the monster's current attack and speed and each patron's current attack, because abilities change those mid-fight.
+- Migrations: `migrate.py` applies new files in `migrations/` on top of `schema.sql`, so schema changes no longer mean deleting the database.
 
 **Next**
 
-- Quest-run endpoints (start a quest, draft a party, take combat turns) that call the combat rules directly. These need the `quest_runs` and `quest_run_patrons` tables from the proposal to keep a run's state between requests.
+- Quest-run endpoints (start a quest, draft a party, take combat turns) that call the combat rules directly and keep a run's state in the quest-run tables.
 - Week 4: deploy to a cloud provider and/or add a GitHub Actions workflow that builds and tests the app.
 
 ## Running it with Docker
@@ -50,7 +52,7 @@ curl -X POST http://localhost:5000/players/Bunhilda/purchases \
 
 The database is also published on `localhost:5434` (user `postgres`, password `postgres`, database `battles_and_barmaids`) for psql or pgAdmin. These credentials are for local development only.
 
-`schema.sql` only runs when the database volume is empty. After changing the schema, reset the database with:
+`schema.sql` only runs when the database volume is empty. Later schema changes go in numbered files in `migrations/`, and `migrate.py` applies the ones a database hasn't had yet, recording each in a `schema_migrations` table. The `web` container runs it on every start. To start over from scratch instead, which deletes your saves:
 
 ```bash
 docker compose down -v
@@ -104,6 +106,7 @@ The original game still runs in a terminal and uses the same database. It needs 
 ```bash
 docker compose up -d db
 pip install -r requirements-game.txt
+python migrate.py      # after pulling schema changes
 python main.py
 ```
 
@@ -128,8 +131,9 @@ The tests run against their own database, `battles_and_barmaids_test`. pytest re
 | `tests/test_catalog_api.py` | Integration: the read-only catalog endpoints return the seed data, filter correctly, and send JSON errors |
 | `tests/test_players_api.py` | Integration: creating, reading and deleting saves, and buying ingredients, including rejected input |
 | `tests/test_combat.py` | Unit: weapon resistance, attack and armor math, barmaid actions (including rejected ones) and combat rounds. Also checks that the rules never load pygame. |
+| `tests/test_quest_runs_schema.py` | Integration: the quest-run tables' constraints (one unfinished run per player, consistent status, valid patron state) and that migrations only apply once |
 | `tests/test_app_helpers.py` | Unit: input validation helper in `app.py` |
-| `tests/conftest.py` | Shared setup: builds the test database and provides the `app` fixture that pytest-flask's `client` fixture uses |
+| `tests/conftest.py` | Shared setup: builds the test database from `schema.sql` plus migrations, and provides the `app` fixture that pytest-flask's `client` fixture uses |
 
 ## Project layout
 
@@ -137,7 +141,8 @@ The tests run against their own database, `battles_and_barmaids_test`. pytest re
 |---|---|
 | `app.py` | Flask API |
 | `database.py` | SQLAlchemy models and the database connection, shared by the API and the terminal game |
-| `schema.sql` | Table definitions and seed data. This is the source of truth for the schema. |
+| `schema.sql` | Starting table definitions and seed data |
+| `migrations/`, `migrate.py` | Schema changes since `schema.sql`, and the script that applies them |
 | `Dockerfile`, `docker-compose.yml` | Container setup |
 | `requirements.txt` | API dependencies (installed in the image) |
 | `requirements-game.txt` | Adds pygame-ce and rich for the terminal game |

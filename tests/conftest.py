@@ -39,6 +39,9 @@ def pytest_configure(config):
     with psycopg.connect(libpq_url) as conn:
         conn.execute(SCHEMA_SQL.read_text(encoding="utf-8"))
 
+    import migrate
+    migrate.migrate(TEST_DATABASE_URL)
+
 # pytest-flask builds `client` from this fixture.
 @pytest.fixture
 def app():
