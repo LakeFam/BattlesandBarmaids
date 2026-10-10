@@ -8,8 +8,10 @@ from rich import print
 import combat
 import database
 import shop
+from audio import sounds
 from data import FLAGON_ART, TITLE_FLAVOR
-from entities import Monster, Patron, Player, flash_text, sounds
+from entities import Monster, Patron, Player
+from terminal import clear_screen, flash_text, run_course
 
 QUESTS = database.get_quests()
 ZONES = database.get_zones()
@@ -93,7 +95,7 @@ class GameEngine:
     def phase_1_hub(self):
         while True:
             zone = ZONES[self.player.current_zone_nbr]
-            shop.clear_screen()
+            clear_screen()
             print(FLAGON_ART)
             print("\n" + "="*50)
             print(f"=== 🍺 🐀 🍖 Enter {zone['tavern_name']} 🍖 🐀 🍺 ===")
@@ -224,15 +226,13 @@ class GameEngine:
             flash_text(f"🍽️  --- COURSE {course} OF 3: {monster.name} IS SERVED! --- 🍽️")
             time.sleep(1)
 
-            if not combat.run_course(course, patrons, monster, self.player):
+            if not run_course(course, patrons, monster, self.player):
                 return False, None
 
             print(f"\n✨ Course {course} cleared!")
             if course < 3:
                 print("You quickly toss a healing snack to your patrons as the next course arrives...")
-                for p in patrons:
-                    if p.is_alive():
-                        p.hp = min(p.max_hp, p.hp + 7)
+                combat.heal_between_courses(patrons)
                 sounds["next_course"].play()
                 time.sleep(2)
 

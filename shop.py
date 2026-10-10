@@ -1,8 +1,5 @@
 from entities import INGREDIENTS
-
-# Simple way to clear the screen
-def clear_screen():
-    print("\n" * 100)
+from terminal import clear_screen
 
 # Returns True if the player could pay.
 def buy(player, sounds, cost, success_msg, success_sound, fail_msg):

@@ -1,32 +1,29 @@
 import random
-import sys
-import time
 
 import database
-from data import FINESSE_FLAVOR, MAGIC_FLAVOR, MELEE_FLAVOR, MONSTER_DEATH_MESSAGES, MONSTER_FLAVOR, sounds
+from data import FINESSE_FLAVOR, MAGIC_FLAVOR, MELEE_FLAVOR, MONSTER_DEATH_MESSAGES, MONSTER_FLAVOR
 
 INGREDIENTS = database.get_ingredients()
 
-# Applies damage; plays the death sound on a kill.
-def deal_damage(target, dmg, death_sound):
-    target.hp -= dmg
-    if not target.is_alive():
-        sounds[death_sound].play()
-# Random death message for monsters
-def print_monster_death(monster):
-    if not monster.is_alive():
-        print(random.choice(MONSTER_DEATH_MESSAGES).format(name=monster.name))
+# One line of combat output, plus sound keys to play with it.
+def event(text, *sounds, flash=False):
+    return {"text": text, "sounds": list(sounds), "flash": flash}
 
-# Flashing text for dramatic effect
-def flash_text(text, flashes=3, delay=0.2):
-    for _ in range(flashes):
-        sys.stdout.write(f"\r\033[1;33m{text}\033[0m")
-        sys.stdout.flush()
-        time.sleep(delay)
-        sys.stdout.write("\r" + " " * len(text) + "\r")
-        sys.stdout.flush()
-        time.sleep(delay)
-    print(f"\033[1;33m{text}\033[0m")
+# Death message if the monster just died.
+def monster_death_events(monster):
+    if monster.is_alive():
+        return []
+    return [event(random.choice(MONSTER_DEATH_MESSAGES).format(name=monster.name), "monster_death")]
+
+def cost_text(cost):
+    return ", ".join(f"{amt}x {name}" for name, amt in cost.items())
+
+# A barmaid action the rules won't allow.
+class ActionError(Exception):
+    def __init__(self, message, sound=None):
+        super().__init__(message)
+        self.sound = sound
+
 # Base class for the 3 barmaids; each supplies its kit via build_abilities()/build_special().
 class Player:
     name = None
@@ -42,6 +39,9 @@ class Player:
         self.active_party = []
         self.abilities = self.build_abilities()
         self.special = self.build_special()
+        # Menu numbers: abilities first, then these two.
+        self.polish_choice = len(self.abilities) + 1
+        self.special_choice = len(self.abilities) + 2
 
     def build_abilities(self):
         return []
@@ -49,107 +49,47 @@ class Player:
     def build_special(self):
         return None
 
-    def take_turn(self, patrons, monster):
-        while True:
-            print("\n" + "="*40)
-            print(f"--- {self.barmaid_name.upper()}'S MOBILE KITCHEN-CART ---")
-            print(f"Barmaid Super Charge: {self.barmaid_super_charge}%")
-            in_stock = []
-            for k, v in self.pantry.items():
-                if v > 0:
-                    in_stock.append(f"{k}: {v}")
-            pantry_display = " | ".join(in_stock)
-            print(f"Pantry Stock: [{pantry_display}]")
+    # Applies one action and returns its events. target is only for abilities aimed at one patron.
+    def act(self, choice, patrons, monster, target=None):
+        if choice == self.polish_choice:
+            found = random.choice(list(INGREDIENTS))
+            self.pantry[found] += 1
+            return [event(f"🧽 You aggressively polish a copper mug on the cart and find 1x {found} hiding underneath!", "barmaid_polish")]
 
-            print()
-            ability_choices = [str(i) for i in range(1, len(self.abilities) + 1)]
-            polish_choice = str(len(self.abilities) + 1)
-            special_choice = str(len(self.abilities) + 2)
-            for i, ability in enumerate(self.abilities, start=1):
-                cost_text = ", ".join(f"{amt}x {name}" for name, amt in ability["cost"].items())
-                print(f"{i}. {ability['label']} (Cost: {cost_text})")
-            print(f"{polish_choice}. 🧽 Polish Tumblers: Skip turn, scavenge +1 random ingredient.")
-            if self.barmaid_super_charge >= 100:
-                cost_text = ", ".join(f"{amt}x {name}" for name, amt in self.special["cost"].items())
-                print(f"{special_choice}. {self.special['label']} (Cost: {cost_text})")
-            else:
-                print(f"{special_choice}. (Locked, requires 100% Super Charge)")
-            choice = input(f"Select hospitality action (1-{special_choice}): ")
-            if choice in ability_choices:
-                ability = self.abilities[int(choice) - 1]
-                # One patron: pick a target.
-                if ability["target"] == "patron":
-                    if self.serve_item(patrons, ability["cost"], ability["charge"], ability["effect"]):
-                        return
-                # Whole party, or the monster.
-                elif self.check_supplies(ability["cost"]):
-                    self.deduct_supplies(ability["cost"])
-                    if ability["target"] == "party":
-                        ability["effect"]([p for p in patrons if p.is_alive()])
-                    else:
-                        ability["effect"](monster)
-                    self.barmaid_super_charge = min(100, self.barmaid_super_charge + ability["charge"])
-                    time.sleep(.5)
-                    return
-            # Scavenge +1 random ingredient.
-            elif choice == polish_choice:
-                sounds["barmaid_polish"].play()
-                found = random.choice(list(INGREDIENTS))
-                self.pantry[found] += 1
-                print(f"\n🧽 You aggressively polish a copper mug on the cart and find 1x {found} hiding underneath!")
-                return
-            elif choice == special_choice:
-                if self.barmaid_super_charge < 100:
-                    sounds["barmaid_fail"].play()
-                    print("❌ Requires 100% Super Charge!")
-                else:
-                    if self.check_supplies(self.special["cost"]):
-                        self.deduct_supplies(self.special["cost"])
-                        if self.special["target"] == "party":
-                            self.special["effect"]([p for p in patrons if p.is_alive()])
-                        else:
-                            self.special["effect"](monster)
-                        self.barmaid_super_charge = 0
-                        return
-
-            else:
-                print("Invalid choice.")
-
-    def serve_item(self, patrons, cost, charge_gain, apply_effect):
-        if not self.check_supplies(cost):
-            return False
-        # Only living patrons can be targeted.
-        living = [p for p in patrons if p.is_alive()]
-        if len(living) == 1:
-            target = living[0]
+        if 1 <= choice <= len(self.abilities):
+            ability = self.abilities[choice - 1]
+        elif choice == self.special_choice:
+            if self.barmaid_super_charge < 100:
+                raise ActionError("❌ Requires 100% Super Charge!", "barmaid_fail")
+            ability = self.special
         else:
-            print("\nWho will you slide this across the cart to?")
-            for i, p in enumerate(living):
-                print(f"{i+1}. {p.name} ({p.hp}/{p.max_hp} HP) [Appetite Meter: {p.power_meter}%]")
+            raise ActionError("Invalid choice.")
 
-            while True:
-                try:
-                    choice = int(input("Select patron number: ")) - 1
-                    if 0 <= choice < len(living):
-                        target = living[choice]
-                        break
-                except ValueError:
-                    pass
-                print("Invalid choice. Try again.")
-        # Spend, and apply.
-        self.deduct_supplies(cost)
-        apply_effect(target)
-        # Super charge caps at 100%.
-        self.barmaid_super_charge = min(100, self.barmaid_super_charge + charge_gain)
-        return True
+        if not self.check_supplies(ability["cost"]):
+            raise ActionError(f"❌ Missing ingredients! Need: {cost_text(ability['cost'])}")
+
+        living = [p for p in patrons if p.is_alive()]
+        if ability["target"] == "patron":
+            if target is None and len(living) == 1:
+                target = living[0]
+            if target not in living:
+                raise ActionError("Choose a living patron to serve.")
+            subject = target
+        elif ability["target"] == "party":
+            subject = living
+        else:
+            subject = monster
+
+        self.deduct_supplies(ability["cost"])
+        events = ability["effect"](subject)
+        if ability is self.special:
+            self.barmaid_super_charge = 0
+        else:
+            self.barmaid_super_charge = min(100, self.barmaid_super_charge + ability["charge"])
+        return events
 
     def check_supplies(self, cost):
-        for item, amount in cost.items():
-            if self.pantry.get(item, 0) < amount:
-                needed = ", ".join(f"{amt}x {name}" for name, amt in cost.items())
-                print(f"❌ Missing ingredients! Need: {needed}")
-                return False
-        return True
+        return all(self.pantry.get(item, 0) >= amount for item, amount in cost.items())
 
     def deduct_supplies(self, cost):
         for item, amount in cost.items():
@@ -193,28 +133,24 @@ class Marigold(Player):
         }
 
     def tend_wounds(self, target):
-        sounds["barmaid_bandage"].play()
         target.defense_buff += 3
         target.hp = min(target.max_hp, target.hp + 25)
-        print(f"\n🩹 You tend {target.name}'s wounds with warm broth and clean linen! (+3 Defense, +25 HP)")
+        return [event(f"🩹 You tend {target.name}'s wounds with warm broth and clean linen! (+3 Defense, +25 HP)", "barmaid_bandage")]
 
     def round_of_comfort(self, living_patrons):
-        sounds["combat_heal"].play()
         for p in living_patrons:
             p.hp = min(p.max_hp, p.hp + 10)
-        print("\n🍲 You ladle out a round of hearty soup for everyone! (+10 HP to the whole party)")
+        return [event("🍲 You ladle out a round of hearty soup for everyone! (+10 HP to the whole party)", "combat_heal")]
 
     def bitter_herb_toss(self, monster):
-        sounds["barmaid_haunt"].play()
         monster.attack_power = max(1, monster.attack_power - 2)
-        print(f"\n🌿 You toss bitter herbs at {monster.name}! Its Attack Flavor dips to {monster.attack_power}.")
+        return [event(f"🌿 You toss bitter herbs at {monster.name}! Its Attack Flavor dips to {monster.attack_power}.", "barmaid_haunt")]
 
     def last_call_miracle(self, living_patrons):
-        sounds["barmaid_miracle"].play()
         target = min(living_patrons, key=lambda p: p.hp)
         target.hp = target.max_hp
         target.defense_buff += 5
-        flash_text(f"✨ LAST CALL MIRACLE! {target.name} is fully healed and fortified!")
+        return [event(f"✨ LAST CALL MIRACLE! {target.name} is fully healed and fortified!", "barmaid_miracle", flash=True)]
 
 class Saffron(Player):
     name = "Saffron the Morale-Brewer"
@@ -254,25 +190,21 @@ class Saffron(Player):
         }
 
     def round_on_the_house(self, target):
-        sounds["barmaid_buff"].play()
         target.ignore_def = True
-        print(f"\n🌶️  You pour a flaming shot for {target.name}! Their next strike cuts right through armor!")
+        return [event(f"🌶️  You pour a flaming shot for {target.name}! Their next strike cuts right through armor!", "barmaid_buff")]
 
     def rally_cry_ale(self, target):
-        sounds["barmaid_rally"].play()
         target.attack_power += 4
-        print(f"\n🍺 You pour {target.name} a Rally Cry Ale! Attack Flavor permanently rises to {target.attack_power}!")
+        return [event(f"🍺 You pour {target.name} a Rally Cry Ale! Attack Flavor permanently rises to {target.attack_power}!", "barmaid_rally")]
 
     def chicory_cure(self, target):
-        sounds["barmaid_heal"].play()
         target.hp = min(target.max_hp, target.hp + 10)
-        print(f"\n☕ You slide {target.name} a mug of chicory brew! (+10 HP)")
+        return [event(f"☕ You slide {target.name} a mug of chicory brew! (+10 HP)", "barmaid_heal")]
 
     def tavern_anthem(self, living_patrons):
-        sounds["barmaid_anthem"].play()
-        flash_text("🎺 TAVERN ANTHEM! The whole party's next strikes cut through armor!")
         for p in living_patrons:
             p.ignore_def = True
+        return [event("🎺 TAVERN ANTHEM! The whole party's next strikes cut through armor!", "barmaid_anthem", flash=True)]
 
 class Bunhilda(Player):
     name = "Bunhilda the Brawler"
@@ -312,27 +244,20 @@ class Bunhilda(Player):
         }
 
     def flaming_shot(self, monster):
-        sounds["barmaid_fireshot"].play()
-        deal_damage(monster, 12, "monster_death")
-        print(f"\n🔥 You hurl a flaming shot straight at {monster.name} for 12 damage!")
-        print_monster_death(monster)
+        monster.hp -= 12
+        return [event(f"🔥 You hurl a flaming shot straight at {monster.name} for 12 damage!", "barmaid_fireshot")] + monster_death_events(monster)
 
     def ghost_pepperoni_slice(self, monster):
-        sounds["barmaid_haunt"].play()
         monster.attack_power = max(1, monster.attack_power - 4)
-        print(f"\n👻🍕 You toss a GHOST PEPPERONI SLICE at {monster.name}! Haunted by the heat, its Attack Flavor drops to {monster.attack_power}!")
+        return [event(f"👻🍕 You toss a GHOST PEPPERONI SLICE at {monster.name}! Haunted by the heat, its Attack Flavor drops to {monster.attack_power}!", "barmaid_haunt")]
 
     def bar_rag_bandage(self, target):
-        sounds["barmaid_heal"].play()
         target.hp = min(target.max_hp, target.hp + 10)
-        print(f"\n🩹 You wrap {target.name}'s wound in a bar rag and a shot of courage! (+10 HP)")
+        return [event(f"🩹 You wrap {target.name}'s wound in a bar rag and a shot of courage! (+10 HP)", "barmaid_heal")]
 
     def holy_ham_grenade(self, monster):
-        sounds["combat_grenade"].play()
-        sounds["barmaid_special"].play()
-        deal_damage(monster, 20, "monster_death")
-        flash_text("🍖 KABOOM! HOLY HAM GRENADE DETONATED FOR 20 DAMAGE! 🍖")
-        print_monster_death(monster)
+        monster.hp -= 20
+        return [event("🍖 KABOOM! HOLY HAM GRENADE DETONATED FOR 20 DAMAGE! 🍖", "combat_grenade", "barmaid_special", flash=True)] + monster_death_events(monster)
 
 Player.classes = [Marigold, Saffron, Bunhilda]
 
@@ -353,7 +278,7 @@ class Character:
         return self.hp > 0
 
     def execute_special(self, monster, patrons):
-        pass
+        return []
 
 class Patron(Character):
     hp = speed = attack = aggro = 0
@@ -370,12 +295,11 @@ class Patron(Character):
 
     # Patron-only until monsters get specials.
     def execute_special(self, monster, patrons):
-        sounds[self.special_sound].play()
-        flash_text(f"🌟 {self.name}'s APPETITE METER IS BURSTING! 🌟")
-        self.special_effect(monster, patrons)
+        banner = event(f"🌟 {self.name}'s APPETITE METER IS BURSTING! 🌟", self.special_sound, flash=True)
+        return [banner] + self.special_effect(monster, patrons)
 
     def special_effect(self, monster, patrons):
-        pass
+        return []
 
 class Paladin(Patron):
     hp, speed, attack, aggro = 60, 4, 8, 9
@@ -387,11 +311,11 @@ class Paladin(Patron):
     death_message = "🍳💀 Princess Blue collapses, her healing leaven finally spent... 'The bread... still rises...'"
 
     def special_effect(self, monster, patrons):
-        target = min((p for p in patrons if p.is_alive()), key=lambda p: p.hp)
+        target = min(patrons, key=lambda p: p.hp)
         heal = 20
         target.hp = min(target.max_hp, target.hp + heal)
         target.defense_buff += 3
-        print(f"🛡️  {self.name} serves a hearty BLESSED STEW! {target.name} recovers {heal} HP and gains +3 Crust Defense!")
+        return [event(f"🛡️  {self.name} serves a hearty BLESSED STEW! {target.name} recovers {heal} HP and gains +3 Crust Defense!")]
 
 class Warrior(Patron):
     hp, speed, attack, aggro = 50, 6, 11, 7
@@ -404,9 +328,8 @@ class Warrior(Patron):
 
     def special_effect(self, monster, patrons):
         dmg = self.attack_power * 2
-        deal_damage(monster, dmg, "monster_death")
-        print(f"🥩 {self.name} uses MEAT-HOOK SMASH! Deals {dmg} massive damage to {monster.name}!")
-        print_monster_death(monster)
+        monster.hp -= dmg
+        return [event(f"🥩 {self.name} uses MEAT-HOOK SMASH! Deals {dmg} massive damage to {monster.name}!")] + monster_death_events(monster)
 
 class Ranger(Patron):
     hp, speed, attack, aggro = 40, 7, 10, 4
@@ -419,10 +342,9 @@ class Ranger(Patron):
 
     def special_effect(self, monster, patrons):
         dmg = self.attack_power
-        deal_damage(monster, dmg, "monster_death")
+        monster.hp -= dmg
         monster.attack_power = max(1, monster.attack_power - 2)
-        print(f"🏹 {self.name} fires a SKEWERING TOOTHPICK! Deals {dmg} damage and saps the monster's Attack Flavor!")
-        print_monster_death(monster)
+        return [event(f"🏹 {self.name} fires a SKEWERING TOOTHPICK! Deals {dmg} damage and saps the monster's Attack Flavor!")] + monster_death_events(monster)
 
 class Rogue(Patron):
     hp, speed, attack, aggro = 30, 8, 14, 5
@@ -435,9 +357,8 @@ class Rogue(Patron):
 
     def special_effect(self, monster, patrons):
         dmg = self.attack_power + 15
-        deal_damage(monster, dmg, "monster_death")
-        print(f"🗡️ {self.name} executes a ZESTY BACKSTAB! Carves past armor for {dmg} vital damage!")
-        print_monster_death(monster)
+        monster.hp -= dmg
+        return [event(f"🗡️ {self.name} executes a ZESTY BACKSTAB! Carves past armor for {dmg} vital damage!")] + monster_death_events(monster)
 
 class Mage(Patron):
     hp, speed, attack, aggro = 25, 5, 16, 4
@@ -450,10 +371,9 @@ class Mage(Patron):
 
     def special_effect(self, monster, patrons):
         dmg = self.attack_power + 5
-        deal_damage(monster, dmg, "monster_death")
+        monster.hp -= dmg
         monster.speed = max(1, monster.speed - 3)
-        print(f"❄️  {self.name} casts LIQUID NITROGEN BLAST! Deals {dmg} damage and flash-freezes the monster's speed!")
-        print_monster_death(monster)
+        return [event(f"❄️  {self.name} casts LIQUID NITROGEN BLAST! Deals {dmg} damage and flash-freezes the monster's speed!")] + monster_death_events(monster)
 
 Patron.classes = [Paladin, Warrior, Ranger, Rogue, Mage]
 
@@ -467,4 +387,3 @@ class Monster(Character):
         self.attack_emoji = attack_emoji
         self.resistant_damage_type = resistant_damage_type
         self.resistant_element = resistant_element
-

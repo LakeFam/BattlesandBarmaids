@@ -1,6 +1,10 @@
 # Combat rules, using the game's real classes.
+import sys
+
+import pytest
+
 import combat
-from entities import Bunhilda, Monster, Paladin, Warrior
+from entities import ActionError, Bunhilda, Marigold, Monster, Paladin, Ranger, Warrior
 
 SKILLET = {"name": "Cast-Iron Skillet", "damage_type": "tenderize", "element": None, "power": 6}
 FROST_TONGS = {"name": "Frosted Ice Tongs", "damage_type": None, "element": "frosty", "power": 8}
@@ -104,3 +108,96 @@ def test_flaming_shot_deals_twelve_damage():
     barmaid.flaming_shot(monster)
 
     assert monster.hp == 88
+
+# --- Barmaid actions ---
+
+def make_party():
+    return [Paladin(Paladin.name), Warrior(Warrior.name), Ranger(Ranger.name)]
+
+def test_action_spends_ingredients_and_builds_charge():
+    barmaid = Bunhilda()
+    monster = make_monster(hp=100)
+
+    events = barmaid.act(1, make_party(), monster)  # Flaming Shot
+
+    assert monster.hp == 88
+    assert barmaid.pantry["🌶️ Chilly Peppers"] == 5
+    assert barmaid.barmaid_super_charge == 30
+    assert events[0]["sounds"] == ["barmaid_fireshot"]
+
+def test_patron_ability_heals_the_chosen_target():
+    barmaid = Marigold()
+    party = make_party()
+    party[1].hp = 10
+
+    barmaid.act(1, party, make_monster(), target=party[1])  # Tend the Wounds
+
+    assert party[1].hp == 35
+    assert party[1].defense_buff == 3
+
+def test_patron_ability_needs_a_living_target():
+    barmaid = Marigold()
+    party = make_party()
+    party[0].hp = 0
+
+    with pytest.raises(ActionError):
+        barmaid.act(1, party, make_monster(), target=party[0])
+
+def test_missing_ingredients_are_rejected_without_spending():
+    barmaid = Bunhilda()
+    barmaid.pantry["🍕 Ghost Pepperoni"] = 0
+
+    with pytest.raises(ActionError, match="Missing ingredients"):
+        barmaid.act(1, make_party(), make_monster())
+    assert barmaid.pantry["🌶️ Chilly Peppers"] == 6
+
+def test_special_needs_full_charge():
+    barmaid = Bunhilda()
+
+    with pytest.raises(ActionError) as err:
+        barmaid.act(barmaid.special_choice, make_party(), make_monster())
+    assert err.value.sound == "barmaid_fail"
+
+def test_special_resets_charge():
+    barmaid = Bunhilda()
+    barmaid.barmaid_super_charge = 100
+    monster = make_monster(hp=100)
+
+    barmaid.act(barmaid.special_choice, make_party(), monster)  # Holy Ham Grenade
+
+    assert monster.hp == 80
+    assert barmaid.barmaid_super_charge == 0
+
+def test_polish_tumblers_finds_one_ingredient():
+    barmaid = Bunhilda()
+
+    barmaid.act(barmaid.polish_choice, make_party(), make_monster())
+
+    assert sum(barmaid.pantry.values()) == 6 * 6 + 1
+
+def test_unknown_action_is_rejected():
+    with pytest.raises(ActionError):
+        Bunhilda().act(9, make_party(), make_monster())
+
+# --- Rounds ---
+
+def test_round_gives_every_living_actor_a_turn():
+    party = make_party()
+    monster = make_monster(hp=500, attack=1)
+
+    turns = combat.play_round(party, monster)
+
+    assert len(turns) == 4  # 3 patrons + monster
+    assert all(isinstance(e["text"], str) for turn in turns for e in turn)
+
+def test_round_stops_when_the_monster_dies():
+    monster = make_monster(hp=1)
+
+    turns = combat.play_round(make_party(), monster)
+
+    assert not monster.is_alive()
+    assert len(turns) <= 2  # the monster may act first
+
+# The API will import these rules, so they must not load pygame.
+def test_rules_do_not_load_pygame():
+    assert "pygame" not in sys.modules

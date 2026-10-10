@@ -8,14 +8,12 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import OperationalError
 
-# Must be set before database.py and data.py are imported.
+# Must be set before database.py is imported.
 TEST_DATABASE_URL = os.environ.get(
     "TEST_DATABASE_URL",
     "postgresql+psycopg://postgres:postgres@localhost:5434/battles_and_barmaids_test",
 )
 os.environ["DATABASE_URL"] = TEST_DATABASE_URL
-os.environ["SDL_AUDIODRIVER"] = "dummy"  # silent sounds
-os.environ["PYGAME_HIDE_SUPPORT_PROMPT"] = "1"
 
 SCHEMA_SQL = Path(__file__).parent.parent / "schema.sql"
 

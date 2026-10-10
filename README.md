@@ -4,7 +4,7 @@ A turn-based tavern RPG. You play a barmaid running a mobile kitchen-cart in the
 
 The game started as a terminal app for my SQL course, with its data in PostgreSQL through SQLAlchemy. **For this portfolio project, I'm putting a Flask REST API in front of the game so it can be played over HTTP, one request per turn.** The app runs as two Docker containers: a Flask web service and a Postgres database.
 
-The full proposal is in [docs/week1-report.txt](docs/week1-report.txt).
+The full proposal is in [docs/week1-report.txt](docs/week1-report.txt). One change since then: saves are now one per barmaid class instead of a player-chosen `barmaid_name`, so the proposal's `/players/<barmaid_name>` paths are `/players/<barmaid_class>`.
 
 ## Status
 
@@ -18,10 +18,11 @@ The full proposal is in [docs/week1-report.txt](docs/week1-report.txt).
 **Week 3**
 
 - pytest tests: integration tests for the API (using pytest-flask) and unit tests for the combat rules. See [Running the tests](#running-the-tests).
+- Combat rules separated from the terminal code. `entities.py` and `combat.py` return an event log (text plus sound names) and raise `ActionError` for invalid barmaid actions, instead of calling `print()`, `input()` or pygame. `terminal.py` prints and plays the events, and only `audio.py` loads pygame.
 
 **Next**
 
-- Quest-run endpoints (start a quest, draft a party, take combat turns). This means separating the combat rules from the terminal code (`input()`, `print()` and pygame sound) so the API can call them.
+- Quest-run endpoints (start a quest, draft a party, take combat turns) that call the combat rules directly. These need the `quest_runs` and `quest_run_patrons` tables from the proposal to keep a run's state between requests.
 - Week 4: deploy to a cloud provider and/or add a GitHub Actions workflow that builds and tests the app.
 
 ## Running it with Docker
@@ -126,7 +127,7 @@ The tests run against their own database, `battles_and_barmaids_test`. pytest re
 |---|---|
 | `tests/test_catalog_api.py` | Integration: the read-only catalog endpoints return the seed data, filter correctly, and send JSON errors |
 | `tests/test_players_api.py` | Integration: creating, reading and deleting saves, and buying ingredients, including rejected input |
-| `tests/test_combat.py` | Unit: weapon resistance, attack and armor math, and barmaid supplies and abilities |
+| `tests/test_combat.py` | Unit: weapon resistance, attack and armor math, barmaid actions (including rejected ones) and combat rounds. Also checks that the rules never load pygame. |
 | `tests/test_app_helpers.py` | Unit: input validation helper in `app.py` |
 | `tests/conftest.py` | Shared setup: builds the test database and provides the `app` fixture that pytest-flask's `client` fixture uses |
 
@@ -140,9 +141,10 @@ The tests run against their own database, `battles_and_barmaids_test`. pytest re
 | `Dockerfile`, `docker-compose.yml` | Container setup |
 | `requirements.txt` | API dependencies (installed in the image) |
 | `requirements-game.txt` | Adds pygame-ce and rich for the terminal game |
-| `requirements-dev.txt` | Adds pytest and pytest-flask for the tests |
+| `requirements-dev.txt` | Adds pytest and pytest-flask for the tests. The tests don't need pygame. |
 | `tests/`, `pytest.ini` | Tests and pytest settings |
-| `main.py`, `entities.py`, `combat.py`, `shop.py`, `data.py` | Terminal game |
+| `entities.py`, `combat.py`, `data.py` | Game rules and text: barmaids, patrons, monsters and combat. No terminal or sound code, so the API can use them. |
+| `main.py`, `terminal.py`, `shop.py`, `audio.py` | Terminal game: menus, prompts, screen output and pygame sound |
 | `NARRATIVE.md` | This game's world, characters and how it plays |
 | `docs/story-plans.md` | The full story, planned for a future game |
 | `project.drawio` | Design diagram |

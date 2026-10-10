@@ -1,7 +1,6 @@
 import random
-import time
 
-from entities import deal_damage, print_monster_death, sounds
+from entities import event, monster_death_events
 
 def get_speed(actor):
     return actor["speed"]
@@ -21,49 +20,38 @@ def apply_monster_resistance(patron, monster, dmg):
         return dmg, False
     return max(1, dmg // 2), True
 
-# One course. True if the monster dies, False if the party does.
-def run_course(course, patrons, monster, player):
-    round_num = 1
-    while monster.is_alive():
-        living_patrons = [p for p in patrons if p.is_alive()]
-        if not living_patrons:
-            return False
+def party_defeated(patrons):
+    return not any(p.is_alive() for p in patrons)
 
-        print(f"\n--- BATTLE ROUND {round_num} (Course {course}) ---")
-        print(f"Monster: {monster.name} ({monster.hp}/{monster.max_hp} HP)")
-        print("Patron Status:")
-        for p in living_patrons:
-            print(f"  - {p.name}: {p.hp}/{p.max_hp} HP [Appetite Meter: {p.power_meter}%]")
-        time.sleep(1)
-
-        player.take_turn(patrons, monster)
-        # Jitter the turn order a little.
-        turn_order = [{"type": "monster", "speed": monster.speed + random.randint(-2, 2)}]
-        for p in living_patrons:
+# Patron and monster turns after the barmaid acts. Returns one event list per turn.
+def play_round(patrons, monster):
+    # Jitter the turn order a little.
+    turn_order = [{"type": "monster", "speed": monster.speed + random.randint(-2, 2)}]
+    for p in patrons:
+        if p.is_alive():
             turn_order.append({"type": "patron", "ref": p, "speed": p.speed + random.randint(-2, 2)})
-        turn_order.sort(key=get_speed, reverse=True)
-        # Life checks.
-        for actor in turn_order:
-            if not any(p.is_alive() for p in patrons) or not monster.is_alive():
-                break
-            take_turn(actor, patrons, monster)
-            time.sleep(1)
-        round_num += 1
+    turn_order.sort(key=get_speed, reverse=True)
 
-    return True
+    turns = []
+    for actor in turn_order:
+        if party_defeated(patrons) or not monster.is_alive():
+            break
+        events = take_turn(actor, patrons, monster)
+        if events:
+            turns.append(events)
+    return turns
 
-# Patron or monster turn
+# Patron or monster turn. Returns its events.
 def take_turn(actor, patrons, monster):
     living_patrons = [p for p in patrons if p.is_alive()]
 
     if actor["type"] == "patron" and actor["ref"].is_alive():
         patron = actor["ref"]
         if patron.power_meter >= 100:
-            patron.execute_special(monster, living_patrons)
+            events = patron.execute_special(monster, living_patrons)
             patron.power_meter = 0
-            return
+            return events
 
-        sounds[patron.attack_sound].play()
         dmg = patron.attack_power
         if patron.weapon is not None:
             dmg += patron.weapon["power"]
@@ -72,17 +60,17 @@ def take_turn(actor, patrons, monster):
             dmg += 5
             patron.ignore_def = False
         dmg, resisted = apply_monster_resistance(patron, monster, dmg)
-        deal_damage(monster, dmg, "monster_death")
+        monster.hp -= dmg
         flavor_verb = random.choice(patron.flavor_text)
-        print(f"{patron.attack_emoji} {patron.name} {flavor_verb} the {monster.name} for {dmg} damage!")
+        events = [event(f"{patron.attack_emoji} {patron.name} {flavor_verb} the {monster.name} for {dmg} damage!", patron.attack_sound)]
         if resisted:
             trait = patron.weapon["damage_type"] or patron.weapon["element"]
-            print(f"🍽️  {monster.name} is resistant to {trait}! The {patron.weapon['name']} only lands a glancing blow.")
-        print_monster_death(monster)
+            events.append(event(f"🍽️  {monster.name} is resistant to {trait}! The {patron.weapon['name']} only lands a glancing blow."))
+        events += monster_death_events(monster)
         patron.power_meter = min(100, patron.power_meter + 25)
+        return events
     # Monster mash...
     elif actor["type"] == "monster":
-        sounds[monster.attack_sound].play()
         weights = []
         # Target weighted by aggro
         for p in living_patrons:
@@ -93,12 +81,19 @@ def take_turn(actor, patrons, monster):
         if target.armor is not None:
             armor_power = target.armor["power"]
         dmg = max(1, monster.attack_power - target.defense_buff - armor_power)
-        deal_damage(target, dmg, "patron_death")
+        target.hp -= dmg
 
         flavor_verb = random.choice(monster.flavor_text)
-        print(f"{monster.attack_emoji} {monster.name} {flavor_verb} {target.name} for {dmg} damage!")
-
+        events = [event(f"{monster.attack_emoji} {monster.name} {flavor_verb} {target.name} for {dmg} damage!", monster.attack_sound)]
         if not target.is_alive():
-            print(target.death_message)
+            events.append(event(target.death_message, "patron_death"))
         target.defense_buff = max(0, target.defense_buff - 1)
         target.power_meter = min(100, target.power_meter + 35)
+        return events
+    return []
+
+# Healing snack before the next course.
+def heal_between_courses(patrons):
+    for p in patrons:
+        if p.is_alive():
+            p.hp = min(p.max_hp, p.hp + 7)
