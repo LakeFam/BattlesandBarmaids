@@ -1,4 +1,4 @@
-# Quest-run tables from migrations/001_quest_runs.sql.
+# Quest-run tables in schema.sql.
 from datetime import datetime
 
 import pytest

@@ -109,7 +109,6 @@ class PlayerAdventurerRow(Base):
     weapon_nbr: Mapped[int | None] = mapped_column(ForeignKey("equipment.equipment_nbr"))
     armor_nbr: Mapped[int | None] = mapped_column(ForeignKey("equipment.equipment_nbr"))
 
-# migrations/001_quest_runs.sql
 class QuestRunRow(Base):
     __tablename__ = "quest_runs"
     run_nbr: Mapped[int] = mapped_column(primary_key=True)
@@ -123,7 +122,7 @@ class QuestRunRow(Base):
     monster_speed: Mapped[int | None]
     started_at: Mapped[datetime] = mapped_column(server_default=func.now())
     ended_at: Mapped[datetime | None]
-    rng_seed: Mapped[int] = mapped_column(BigInteger)  # migrations/002_quest_run_seed.sql
+    rng_seed: Mapped[int] = mapped_column(BigInteger)
 
 class QuestRunPatronRow(Base):
     __tablename__ = "quest_run_patrons"
@@ -136,7 +135,7 @@ class QuestRunPatronRow(Base):
     attack_power: Mapped[int]
     power_meter: Mapped[int] = mapped_column(server_default="0")
     defense_buff: Mapped[int] = mapped_column(server_default="0")
-    double_strike: Mapped[bool] = mapped_column(server_default="false")  # migrations/003_rebalance.sql
+    double_strike: Mapped[bool] = mapped_column(server_default="false")
     weapon_nbr: Mapped[int | None] = mapped_column(ForeignKey("equipment.equipment_nbr"))
     armor_nbr: Mapped[int | None] = mapped_column(ForeignKey("equipment.equipment_nbr"))
 

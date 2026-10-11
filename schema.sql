@@ -94,6 +94,55 @@ CREATE TABLE player_adventurers (
     PRIMARY KEY (player_nbr, adventurer_class)
 );
 
+-- Quest runs: one attempt at a quest, saved between API requests.
+-- Ingredients and super charge stay on player_inventory and players.
+CREATE TABLE quest_runs (
+    run_nbr SERIAL PRIMARY KEY,
+    player_nbr INTEGER NOT NULL REFERENCES players(player_nbr) ON DELETE CASCADE,
+    quest_nbr INTEGER NOT NULL REFERENCES quests(quest_nbr),
+    status TEXT NOT NULL DEFAULT 'drafting' CHECK (status IN ('drafting', 'in_combat', 'won', 'lost', 'abandoned')),
+    course INTEGER NOT NULL DEFAULT 1 CHECK (course BETWEEN 1 AND 3),
+    round_nbr INTEGER NOT NULL DEFAULT 1 CHECK (round_nbr >= 1),
+    -- Current monster stats; abilities lower attack and speed mid-fight.
+    monster_hp INTEGER CHECK (monster_hp >= 0),
+    monster_attack INTEGER CHECK (monster_attack > 0),
+    monster_speed INTEGER CHECK (monster_speed > 0),
+    started_at TIMESTAMP NOT NULL DEFAULT now(),
+    ended_at TIMESTAMP,
+    -- Seed for the run's dice. The same seed and the same actions replay the same fight.
+    rng_seed BIGINT NOT NULL,
+    CHECK ((status IN ('won', 'lost', 'abandoned')) = (ended_at IS NOT NULL)),
+    CHECK (status <> 'in_combat' OR (monster_hp IS NOT NULL AND monster_attack IS NOT NULL AND monster_speed IS NOT NULL))
+);
+
+-- Run history by player.
+CREATE INDEX idx_quest_runs_player_nbr ON quest_runs (player_nbr);
+
+-- One unfinished run per player.
+CREATE UNIQUE INDEX uq_quest_runs_one_open_per_player ON quest_runs (player_nbr)
+    WHERE status IN ('drafting', 'in_combat');
+
+-- The 5-patron draft pool and the party's live combat state.
+CREATE TABLE quest_run_patrons (
+    run_nbr INTEGER NOT NULL REFERENCES quest_runs(run_nbr) ON DELETE CASCADE,
+    slot INTEGER NOT NULL CHECK (slot BETWEEN 1 AND 5),
+    adventurer_class TEXT NOT NULL CHECK (adventurer_class IN ('Paladin', 'Warrior', 'Ranger', 'Rogue', 'Mage')),
+    is_drafted BOOLEAN NOT NULL DEFAULT FALSE,
+    hp INTEGER NOT NULL CHECK (hp >= 0),
+    max_hp INTEGER NOT NULL CHECK (max_hp > 0),
+    -- Rally Cry Ale raises it mid-fight.
+    attack_power INTEGER NOT NULL CHECK (attack_power > 0),
+    power_meter INTEGER NOT NULL DEFAULT 0 CHECK (power_meter BETWEEN 0 AND 100),
+    defense_buff INTEGER NOT NULL DEFAULT 0 CHECK (defense_buff >= 0),
+    -- Saffron's Round on the House: the next hit deals double damage.
+    double_strike BOOLEAN NOT NULL DEFAULT FALSE,
+    weapon_nbr INTEGER REFERENCES equipment(equipment_nbr),
+    armor_nbr INTEGER REFERENCES equipment(equipment_nbr),
+    PRIMARY KEY (run_nbr, slot),
+    UNIQUE (run_nbr, adventurer_class),
+    CHECK (hp <= max_hp)
+);
+
 -- Seed data, migrated from data.py
 
 INSERT INTO items (name, emoji, cost) VALUES
@@ -137,27 +186,29 @@ He''s sizzling and vast,
 Bored stiff on his cast,
 Bring three courses, his rule we''ll be breakin''!', TRUE);
 
+-- Quest 1 drops a mix of what the barmaid spends; quest 2 pays more for a harder fight.
 INSERT INTO quest_drops (quest_nbr, item_nbr, quantity)
-    SELECT 1, item_nbr, 4 FROM items WHERE name = 'Mighty Malt';
+    SELECT 1, item_nbr, 2 FROM items
+    WHERE name IN ('Mighty Malt', 'Aged Cheddar', 'Watery Onion', 'Chilly Peppers', 'Ghost Pepperoni');
 INSERT INTO quest_drops (quest_nbr, item_nbr, quantity)
-    SELECT 2, item_nbr, 2 FROM items WHERE name = 'Aged Cheddar';
+    SELECT 2, item_nbr, 4 FROM items WHERE name IN ('Aged Cheddar', 'Chilly Peppers');
 INSERT INTO quest_drops (quest_nbr, item_nbr, quantity)
-    SELECT 2, item_nbr, 3 FROM items WHERE name = 'Chilly Peppers';
+    SELECT 2, item_nbr, 3 FROM items WHERE name = 'Ghost Pepperoni';
 INSERT INTO quest_drops (quest_nbr, item_nbr, quantity)
     SELECT 3, item_nbr, 6 FROM items WHERE name = 'Holy Ham';
 INSERT INTO quest_drops (quest_nbr, item_nbr, quantity)
     SELECT 3, item_nbr, 4 FROM items WHERE name = 'Watery Onion';
 
 INSERT INTO monsters (quest_nbr, course, name, hp, speed, attack, emoji) VALUES
-(1, 1, 'Lil Nibbler', 70, 7, 10, '🐭'),
-(1, 2, 'Ratta Rogue', 100, 6, 14, '🐀'),
-(1, 3, 'Ratta Chewie, the Cellar King', 150, 5, 20, '👑'),
-(2, 1, 'Little Gobbler', 120, 10, 16, '🌱'),
-(2, 2, 'Greener Goblin', 180, 9, 22, '🥑'),
-(2, 3, 'Gobla Cado Grande', 260, 8, 30, '👹'),
-(3, 1, 'Braised Bandit', 180, 7, 24, '🥓'),
-(3, 2, 'Mutton Chopper', 230, 6, 30, '🍖'),
-(3, 3, 'The Baconnator', 320, 5, 38, '🐗');
+(1, 1, 'Lil Nibbler', 110, 7, 20, '🐭'),
+(1, 2, 'Ratta Rogue', 165, 6, 26, '🐀'),
+(1, 3, 'Ratta Chewie, the Cellar King', 240, 5, 32, '👑'),
+(2, 1, 'Little Gobbler', 130, 10, 23, '🌱'),
+(2, 2, 'Greener Goblin', 195, 9, 29, '🥑'),
+(2, 3, 'Gobla Cado Grande', 280, 8, 37, '👹'),
+(3, 1, 'Braised Bandit', 235, 7, 24, '🥓'),
+(3, 2, 'Mutton Chopper', 300, 6, 30, '🍖'),
+(3, 3, 'The Baconnator', 415, 5, 38, '🐗');
 
 -- Ratta Chewie is already "grown fat on the stew" - too tender to be tenderized further.
 UPDATE monsters SET resistant_damage_type = 'tenderize' WHERE quest_nbr = 1 AND course = 3;

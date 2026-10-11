@@ -21,10 +21,10 @@ The full proposal is in [docs/week1-report.txt](docs/week1-report.txt). One chan
 
 - pytest tests: integration tests for the API (using pytest-flask) and unit tests for the combat rules. See [Running the tests](#running-the-tests).
 - Combat rules separated from the terminal code. `entities.py` and `combat.py` return an event log (text plus sound names) and raise `ActionError` for invalid barmaid actions, instead of calling `print()`, `input()` or pygame. `terminal.py` prints and plays the events, and only `audio.py` loads pygame.
-- Quest-run tables (`quest_runs` and `quest_run_patrons`) from the proposal, added as the first migration. They also store the monster's current attack and speed and each patron's current attack, because abilities change those mid-fight.
-- Migrations: `migrate.py` applies new files in `migrations/` on top of `schema.sql`, so schema changes no longer mean deleting the database.
+- Quest-run tables (`quest_runs` and `quest_run_patrons`) from the proposal. They also store the monster's current attack and speed and each patron's current attack, because abilities change those mid-fight.
+- Migrations: `migrate.py` applies new files in `migrations/` on top of `schema.sql`, so future schema changes won't mean deleting the database. The changes so far are folded into `schema.sql`, so `migrations/` is empty for now.
 - Quest-run endpoints (listed below): start a quest, draft a party, take combat turns and abandon a run. `runs.py` loads a saved run as game objects, plays the round with the same rules as the terminal game, and saves it back in one transaction.
-- Seeded dice, as planned in the proposal. Each run stores an `rng_seed` (second migration), and each round's dice come from that seed and the round number. The same seed and the same actions replay the same fight, which the tests check. The terminal game still uses ordinary random dice.
+- Seeded dice, as planned in the proposal. Each run stores an `rng_seed`, and each round's dice come from that seed and the round number. The same seed and the same actions replay the same fight, which the tests check. The terminal game still uses ordinary random dice.
 
 **Week 4**
 
