@@ -21,6 +21,17 @@ def flash_text(text, flashes=3, delay=0.2):
         time.sleep(delay)
     print(f"\033[1;33m{text}\033[0m")
 
+# "hp/max HP" in green above 50%, yellow down to 25%, red below.
+def hp_text(character):
+    left = character.hp / character.max_hp
+    if left > 0.5:
+        color = "32"
+    elif left >= 0.25:
+        color = "33"
+    else:
+        color = "31"
+    return f"\033[{color}m{character.hp}/{character.max_hp} HP\033[0m"
+
 # Plays and prints events from the rules.
 def show_events(events):
     for e in events:
@@ -43,7 +54,7 @@ def run_course(course, patrons, monster, player):
         print("Patron Status:")
         for p in patrons:
             if p.is_alive():
-                print(f"  - {p.name}: {p.hp}/{p.max_hp} HP [Appetite Meter: {p.power_meter}%]")
+                print(f"  - {p.name}: {hp_text(p)} [Appetite Meter: {p.power_meter}%]")
         time.sleep(1)
 
         barmaid_turn(player, patrons, monster)
@@ -105,7 +116,7 @@ def choose_patron(patrons):
 
     print("\nWho will you slide this across the cart to?")
     for i, p in enumerate(living, start=1):
-        print(f"{i}. {p.name} ({p.hp}/{p.max_hp} HP) [Appetite Meter: {p.power_meter}%]")
+        print(f"{i}. {p.name} ({hp_text(p)}) [Appetite Meter: {p.power_meter}%]")
     while True:
         choice = input("Select patron number: ")
         if choice in map(str, range(1, len(living) + 1)):
