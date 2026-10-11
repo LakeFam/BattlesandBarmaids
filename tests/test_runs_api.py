@@ -90,7 +90,7 @@ def test_draft_serves_the_first_course(client):
     assert run["status"] == "in_combat"
     assert [p["slot"] for p in run["patrons"] if p["is_drafted"]] == [1, 3, 5]
     assert run["monster"]["name"] == "Lil Nibbler"
-    assert run["monster"]["hp"] == run["monster"]["max_hp"] == 70
+    assert run["monster"]["hp"] == run["monster"]["max_hp"] == 110
     assert "COURSE 1 OF 3" in response.json["events"][0]["text"]
 
 @pytest.mark.parametrize("picks", [[1, 2], [1, 1, 2], [1, 2, 6], [True, 2, 3], "123"])
@@ -173,7 +173,7 @@ def test_killing_the_monster_serves_the_next_course(client):
     assert run["status"] == "in_combat"
     assert run["course"] == 2
     assert run["monster"]["name"] == "Ratta Rogue"
-    assert run["monster"]["hp"] == 100
+    assert run["monster"]["hp"] == 165
     assert any(e["text"] == "✨ Course 1 cleared!" for e in response.json["events"])
 
 def test_clearing_course_three_wins_the_quest(client):
@@ -186,7 +186,7 @@ def test_clearing_course_three_wins_the_quest(client):
     assert run["status"] == "won"
     assert run["ended_at"] is not None
     assert 10 + 30 <= run["barmaid"]["gold"] <= 10 + 60
-    assert pantry(client)["Mighty Malt"] == 6 + 4  # quest 1 drop
+    assert pantry(client)["Mighty Malt"] == 6 + 2  # quest 1 drop
 
 def test_beating_a_boss_opens_the_next_zone(client):
     run_nbr = start_and_draft(client, quest_nbr=3)
