@@ -31,10 +31,6 @@ The full proposal is in [docs/week1-report.txt](docs/week1-report.txt). One chan
 - GitHub Actions workflow (`.github/workflows/ci.yml`) on every push to `main` and every pull request. One job runs the tests against a Postgres service container. The other builds the image, starts the Compose stack, and checks that the API answers.
 - `GET /health`, which also checks the database connection. The `web` service's Compose healthcheck uses it, so `docker compose up --wait` waits until the API is ready.
 
-**Next**
-
-- Deploy to a cloud provider.
-
 ## Running it with Docker
 
 You need Docker Desktop (or another Docker engine with Compose).
